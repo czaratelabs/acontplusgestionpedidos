@@ -1,65 +1,56 @@
-import Image from "next/image";
+import { getCompanies } from "@/lib/api";
+import { Suspense } from "react"; // Estándar React 19
 
-export default function Home() {
+// Componente Asíncrono (Server Component)
+// El navegador NO descarga JavaScript para renderizar esto.
+export default async function Home() {
+  const companies = await getCompanies();
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
+    <div className="min-h-screen p-10 font-sans bg-gray-50/50">
+      <header className="flex items-center justify-between mb-10">
+        <div>
+          <h1 className="text-4xl font-extrabold tracking-tight text-slate-900">
+            Nexus ERP <span className="text-indigo-600 text-lg">v2026</span>
           </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+          <p className="text-slate-500 mt-2">Panel de Control Multi-Tenant</p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
+
+        <button className="bg-slate-900 text-white px-6 py-2.5 rounded-lg hover:bg-slate-800 transition-all shadow-lg hover:shadow-xl font-medium">
+          + Nueva Organización
+        </button>
+      </header>
+
+      <main>
+        <Suspense fallback={<div className="text-indigo-600">Cargando flujo de datos...</div>}>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {companies.map((company: any) => (
+              <CardEmpresa key={company.id} data={company} />
+            ))}
+          </div>
+        </Suspense>
       </main>
+    </div>
+  );
+}
+
+// Micro-componente visual
+function CardEmpresa({ data }: { data: any }) {
+  return (
+    <div className="group bg-white border border-slate-200 p-6 rounded-2xl hover:border-indigo-500/50 hover:shadow-indigo-500/10 hover:shadow-2xl transition-all duration-300 cursor-pointer relative overflow-hidden">
+      <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-indigo-100/50 to-transparent rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-150" />
+
+      <div className="relative z-10">
+        <div className="w-12 h-12 bg-indigo-50 rounded-xl flex items-center justify-center mb-4 text-2xl shadow-sm">
+          🏢
+        </div>
+        <h3 className="text-xl font-bold text-slate-800 mb-1">{data.name}</h3>
+        <p className="text-sm text-slate-400 font-mono tracking-wide">{data.ruc_nit}</p>
+
+        <div className="mt-6 flex items-center text-xs font-medium text-indigo-600 opacity-0 group-hover:opacity-100 transform translate-y-2 group-hover:translate-y-0 transition-all">
+          Acceder al Dashboard &rarr;
+        </div>
+      </div>
     </div>
   );
 }
