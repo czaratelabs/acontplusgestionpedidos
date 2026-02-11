@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { cookies } from "next/headers"; // 👈 Para leer cookies en el servidor
 import { jwtDecode } from "jwt-decode"; // 👈 Para leer el token
+import { Building2, Settings, SlidersHorizontal } from "lucide-react";
 import { UserNav } from "@/components/user-nav";
 
 // Definimos qué forma tiene el token por dentro
@@ -85,6 +86,18 @@ export default async function DashboardLayout({
               </div>
               <Link href={`/dashboard/${id}/users`} className="flex items-center gap-3 px-3 py-2.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg text-sm font-medium transition-all">
                 👥 Usuarios y Roles
+              </Link>
+              <Link href={`/dashboard/${id}/settings/establishments`} className="flex items-center gap-3 px-3 py-2.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg text-sm font-medium transition-all">
+                <Building2 className="h-4 w-4" />
+                Establecimientos
+              </Link>
+              <Link href={`/dashboard/${id}/settings/company`} className="flex items-center gap-3 px-3 py-2.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg text-sm font-medium transition-all">
+                <Settings className="h-4 w-4" />
+                Configuración Empresa
+              </Link>
+              <Link href={`/dashboard/${id}/settings/general`} className="flex items-center gap-3 px-3 py-2.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg text-sm font-medium transition-all">
+                <SlidersHorizontal className="h-4 w-4" />
+                Configuración General
               </Link>
               <Link href={`/dashboard/${id}/settings`} className="flex items-center gap-3 px-3 py-2.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg text-sm font-medium transition-all">
                 ⚙️ Configuración Global
