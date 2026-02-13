@@ -68,9 +68,11 @@ export default function EmissionPointsPage({
 
   // Cargar puntos
   useEffect(() => {
-    fetch(`${API_BASE}/emission-points/establishment/${establishmentId}`)
-      .then((res) => res.json())
-      .then((data) => setPoints(data))
+    fetch(`${API_BASE}/emission-points/establishment/${establishmentId}`, {
+      credentials: "include",
+    })
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => setPoints(Array.isArray(data) ? data : []))
       .catch((err) => console.error(err));
   }, [establishmentId, open]);
 
@@ -120,6 +122,7 @@ export default function EmissionPointsPage({
         method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
+        credentials: "include",
       });
 
       if (!res.ok) {
@@ -161,7 +164,7 @@ export default function EmissionPointsPage({
           <DialogTrigger asChild>
             <Button>+ Nuevo Punto</Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-[425px] max-h-[90vh] overflow-y-auto">
+          <DialogContent className="sm:max-w-[425px] max-h-[90vh] overflow-y-auto" aria-describedby={undefined}>
             <DialogHeader>
               <DialogTitle>
                 {editingPoint ? "Editar Punto de Emisión" : "Agregar Punto de Emisión"}
@@ -263,7 +266,7 @@ export default function EmissionPointsPage({
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
-        {points.map((point) => (
+        {(Array.isArray(points) ? points : []).map((point) => (
           <Card key={point.id}>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-lg">{point.code}</CardTitle>

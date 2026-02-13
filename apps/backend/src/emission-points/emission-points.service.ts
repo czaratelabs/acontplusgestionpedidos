@@ -16,7 +16,10 @@ export class EmissionPointsService {
   ) {}
 
   async create(establishmentId: string, dto: CreateEmissionPointDto) {
-    const establishment = await this.establishmentRepo.findOneBy({ id: establishmentId });
+    const establishment = await this.establishmentRepo.findOne({
+      where: { id: establishmentId },
+      relations: ['company'],
+    });
     if (!establishment) throw new NotFoundException('Establecimiento no encontrado');
 
     const newPoint = this.pointRepo.create({
@@ -34,9 +37,25 @@ export class EmissionPointsService {
   }
 
   async update(id: string, dto: UpdateEmissionPointDto): Promise<EmissionPoint> {
-    const point = await this.pointRepo.findOneBy({ id });
+    // Load with establishment relation (and nested company) so establishment_id is never overwritten
+    const point = await this.pointRepo.findOne({
+      where: { id },
+      relations: ['establishment', 'establishment.company'],
+    });
     if (!point) throw new NotFoundException('Punto de emisión no encontrado');
-    Object.assign(point, dto);
+    // Actualizar solo campos del DTO para no tocar la relación establishment
+    const fields: (keyof UpdateEmissionPointDto)[] = [
+      'code',
+      'name',
+      'invoice_sequence',
+      'proforma_sequence',
+      'order_sequence',
+      'delivery_note_sequence',
+      'dispatch_sequence',
+    ];
+    for (const key of fields) {
+      if (dto[key] !== undefined) (point as unknown as Record<string, unknown>)[key] = dto[key];
+    }
     return this.pointRepo.save(point);
   }
 }

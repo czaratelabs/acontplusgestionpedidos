@@ -3,17 +3,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
-
-async function getEstablishments(companyId: string) {
-  const res = await fetch(`${API_BASE}/establishments/company/${companyId}`, { cache: 'no-store' });
-  if (!res.ok) return [];
-  return res.json();
-}
+import { getEstablishments } from "@/lib/api";
 
 export default async function EstablishmentsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  console.log("Fetching establishments for company:", id);
   const establishments = await getEstablishments(id);
 
   return (

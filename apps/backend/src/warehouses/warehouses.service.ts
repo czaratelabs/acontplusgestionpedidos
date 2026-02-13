@@ -16,7 +16,10 @@ export class WarehousesService {
   ) {}
 
   async create(establishmentId: string, dto: CreateWarehouseDto): Promise<Warehouse> {
-    const establishment = await this.establishmentRepo.findOneBy({ id: establishmentId });
+    const establishment = await this.establishmentRepo.findOne({
+      where: { id: establishmentId },
+      relations: ['company'],
+    });
     if (!establishment) throw new NotFoundException('Establecimiento no encontrado');
 
     const warehouse = this.warehouseRepo.create({
@@ -34,9 +37,15 @@ export class WarehousesService {
   }
 
   async update(id: string, dto: UpdateWarehouseDto): Promise<Warehouse> {
-    const warehouse = await this.warehouseRepo.findOneBy({ id });
+    // Load with establishment relation (and nested company) so company_id is preserved in audit logs
+    const warehouse = await this.warehouseRepo.findOne({
+      where: { id },
+      relations: ['establishment', 'establishment.company'],
+    });
     if (!warehouse) throw new NotFoundException('Almacén no encontrado');
-    Object.assign(warehouse, dto);
+    // Actualizar solo campos del DTO para no tocar la relación establishment
+    if (dto.name !== undefined) warehouse.name = dto.name;
+    if (dto.description !== undefined) warehouse.description = dto.description ?? null;
     return this.warehouseRepo.save(warehouse);
   }
 }

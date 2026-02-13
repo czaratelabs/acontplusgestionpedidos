@@ -33,26 +33,64 @@ function getEntityName(entity: object): string {
   return entity.constructor.name;
 }
 
-function getCompanyId(entity: object): string | null {
-  const e = entity as any;
-  if (entity.constructor.name === 'Company' && e.id) return String(e.id);
-  if (e.company?.id) return String(e.company.id);
-  if (e.establishment?.company?.id) return String(e.establishment.company.id);
-  if (e.companyId) return String(e.companyId);
-  if (e.company_id) return String(e.company_id);
+/** Extract company ID from a single entity (relation object or column ID). */
+function getCompanyIdFromEntry(entry: object | undefined): string | null {
+  if (entry == null) return null;
+  const e = entry as Record<string, unknown>;
+  
+  // If it's a Company entity itself, use its ID
+  if (e.constructor?.name === 'Company' && e.id) return String(e.id);
+  
+  // Try relation object first (if loaded)
+  const company = e.company as { id?: string } | undefined;
+  if (company?.id) return String(company.id);
+  
+  // Try nested relation (e.g., EmissionPoint -> Establishment -> Company)
+  const establishment = e.establishment as { company?: { id?: string } } | undefined;
+  if (establishment?.company?.id) return String(establishment.company.id);
+  
+  // Try direct column IDs (TypeORM auto-creates companyId for @ManyToOne)
+  // Check both camelCase and snake_case variants
+  if (e.companyId != null && e.companyId !== undefined) return String(e.companyId);
+  if (e.company_id != null && e.company_id !== undefined) return String(e.company_id);
+  
+  // Last resort: check all properties for company-related keys
+  // TypeORM might store it under different property names
+  const keys = Object.keys(e);
+  for (const key of keys) {
+    if (key.toLowerCase().includes('company') && e[key] != null) {
+      const value = e[key];
+      // If it's an object with id, extract it
+      if (typeof value === 'object' && value !== null && 'id' in value) {
+        const id = (value as { id?: unknown }).id;
+        if (id != null) return String(id);
+      }
+      // If it's a direct ID value
+      if (typeof value === 'string' || typeof value === 'number') {
+        return String(value);
+      }
+    }
+  }
+  
   return null;
 }
 
-/** For UPDATE: resolve company_id from entity first, then fallback to databaseEntity (prevents NULL on partial User updates). */
-function getCompanyIdForUpdate(event: UpdateEvent<object>): string | null {
-  const entity = event.entity as any;
-  const databaseEntity = event.databaseEntity as any;
-  let companyId = getCompanyId(entity);
-  if (!companyId && databaseEntity) {
-    companyId = getCompanyId(databaseEntity) ?? databaseEntity.company_id ?? databaseEntity.company?.id ?? null;
-    if (companyId != null) companyId = String(companyId);
-  }
-  return companyId;
+/**
+ * Generic company preservation for audit logs.
+ * Resolves company_id from updated entry first, then strictly falls back to original (database) entry.
+ * Checks both relation (.company) and column (.companyId / .company_id) so company_id is never lost on UPDATE.
+ */
+function resolveCompanyIdForAudit(
+  updatedEntry: object | undefined,
+  originalEntry: object | undefined,
+): string | null {
+  // Try updated entry first
+  let companyId = getCompanyIdFromEntry(updatedEntry);
+  if (companyId) return companyId;
+  
+  // Strictly fallback to original (database) entry
+  companyId = getCompanyIdFromEntry(originalEntry);
+  return companyId ?? null;
 }
 
 function sanitize(obj: object | undefined): Record<string, unknown> | null {
@@ -82,14 +120,14 @@ function getPerformedBy(): string | null {
 @EventSubscriber()
 export class AuditSubscriber implements EntitySubscriberInterface {
   afterInsert(event: InsertEvent<object>): void {
-    const entity = event.entity as any;
+    const entity = event.entity as Record<string, unknown>;
     if (!entity || !shouldAudit(entity)) return;
     const performedBy = getPerformedBy();
     const repo = event.manager.getRepository(AuditLog);
     const log = repo.create({
       entity_name: getEntityName(entity),
       entity_id: String(entity.id),
-      company_id: getCompanyId(entity),
+      company_id: getCompanyIdFromEntry(entity),
       action: AuditAction.CREATE,
       performed_by: performedBy,
       old_values: null,
@@ -98,33 +136,47 @@ export class AuditSubscriber implements EntitySubscriberInterface {
     repo.save(log).catch((err) => console.error('Audit afterInsert error', err));
   }
 
-  beforeUpdate(event: UpdateEvent<object>): void {
-    const entity = event.entity as any;
-    if (!entity || !shouldAudit(entity)) return;
-    const databaseEntity = event.databaseEntity as any;
+  afterUpdate(event: UpdateEvent<object>): void {
+    const updatedEntry = event.entity as Record<string, unknown>;
+    const originalEntry = event.databaseEntity as Record<string, unknown> | undefined;
+    if (!updatedEntry || !shouldAudit(updatedEntry)) return;
     const performedBy = getPerformedBy();
     const repo = event.manager.getRepository(AuditLog);
+    const companyId = resolveCompanyIdForAudit(updatedEntry, originalEntry);
+    
+    // Debug logging if companyId is missing
+    if (!companyId) {
+      const entityName = getEntityName(updatedEntry);
+      console.warn(`[Audit] Missing company_id for ${entityName} update:`, {
+        entityId: updatedEntry.id,
+        updatedEntryKeys: Object.keys(updatedEntry),
+        originalEntryKeys: originalEntry ? Object.keys(originalEntry) : [],
+        updatedEntryCompany: (updatedEntry as any).company,
+        originalEntryCompany: originalEntry ? (originalEntry as any).company : null,
+      });
+    }
+    
     const log = repo.create({
-      entity_name: getEntityName(entity),
-      entity_id: String(entity.id),
-      company_id: getCompanyIdForUpdate(event),
+      entity_name: getEntityName(updatedEntry),
+      entity_id: String(updatedEntry.id),
+      company_id: companyId,
       action: AuditAction.UPDATE,
       performed_by: performedBy,
-      old_values: sanitize(databaseEntity),
-      new_values: sanitize(entity),
+      old_values: sanitize(originalEntry ?? {}),
+      new_values: sanitize(updatedEntry),
     });
-    repo.save(log).catch((err) => console.error('Audit beforeUpdate error', err));
+    repo.save(log).catch((err) => console.error('Audit afterUpdate error', err));
   }
 
   beforeRemove(event: RemoveEvent<object>): void {
-    const entity = (event.databaseEntity ?? event.entity) as any;
+    const entity = (event.databaseEntity ?? event.entity) as Record<string, unknown>;
     if (!entity || !shouldAudit(entity)) return;
     const performedBy = getPerformedBy();
     const repo = event.manager.getRepository(AuditLog);
     const log = repo.create({
       entity_name: getEntityName(entity),
       entity_id: String(entity.id),
-      company_id: getCompanyId(entity),
+      company_id: getCompanyIdFromEntry(entity),
       action: AuditAction.DELETE,
       performed_by: performedBy,
       old_values: sanitize(entity),

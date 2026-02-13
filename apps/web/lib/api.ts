@@ -53,3 +53,19 @@ export async function getCompanyUsers(companyId: string) {
     return [];
   }
 }
+
+// Obtener establecimientos de una empresa
+export async function getEstablishments(companyId: string) {
+  try {
+    const authHeaders = await getAuthHeaders();
+    const res = await fetch(`${API_BASE}/establishments/company/${companyId}`, {
+      cache: "no-store",
+      headers: authHeaders,
+    });
+    if (!res.ok) return [];
+    return res.json();
+  } catch (error) {
+    console.error("Error fetching establishments:", error);
+    return [];
+  }
+}

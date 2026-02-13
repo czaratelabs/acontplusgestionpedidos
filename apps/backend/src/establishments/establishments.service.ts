@@ -34,7 +34,11 @@ export class EstablishmentsService {
   }
 
   async update(id: string, dto: UpdateEstablishmentDto): Promise<Establishment> {
-    const establishment = await this.establishmentRepo.findOneBy({ id });
+    // Load with company relation to ensure company_id is preserved in audit logs
+    const establishment = await this.establishmentRepo.findOne({
+      where: { id },
+      relations: ['company'],
+    });
     if (!establishment) throw new NotFoundException('Establecimiento no encontrado');
     Object.assign(establishment, dto);
     return this.establishmentRepo.save(establishment);

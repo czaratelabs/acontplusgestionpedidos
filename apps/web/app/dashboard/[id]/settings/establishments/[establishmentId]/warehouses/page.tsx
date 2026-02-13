@@ -63,7 +63,8 @@ export default function WarehousesPage({
   async function fetchWarehouses() {
     try {
       const res = await fetch(
-        `${API_BASE}/warehouses/establishment/${establishmentId}`
+        `${API_BASE}/warehouses/establishment/${establishmentId}`,
+        { credentials: "include" }
       );
       if (!res.ok) throw new Error("Error cargando almacenes");
       const data = await res.json();
@@ -117,6 +118,7 @@ export default function WarehousesPage({
 
       const res = await fetch(url, {
         method,
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
