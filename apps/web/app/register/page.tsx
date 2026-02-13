@@ -1,11 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import Cookies from "js-cookie";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
@@ -29,77 +28,52 @@ import {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
-// Esquema de validación (Reglas del juego)
 const formSchema = z.object({
+  company_name: z.string().min(1, "El nombre de la empresa es requerido"),
+  company_ruc_nit: z.string().min(1, "El RUC/NIT es requerido"),
+  full_name: z.string().min(1, "Tu nombre completo es requerido"),
   email: z.string().email("Correo electrónico inválido"),
   password: z.string().min(6, "La contraseña debe tener al menos 6 caracteres"),
 });
 
-export default function LoginPage() {
+export default function RegisterPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    if (searchParams.get("registered") === "1") {
-      setSuccess("Cuenta creada. Ya puedes iniciar sesión.");
-      router.replace("/login", { scroll: false });
-    }
-  }, [searchParams, router]);
-
-  // Inicializar el formulario
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
+      company_name: "",
+      company_ruc_nit: "",
+      full_name: "",
       email: "",
       password: "",
     },
   });
 
-  // Función que se ejecuta al enviar
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setLoading(true);
     setError("");
 
     try {
-      const loginUrl = `${API_BASE}/auth/login`;
-      console.log("🔗 Attempting Login to:", loginUrl);
-      console.log("🔗 NEXT_PUBLIC_API_URL:", process.env.NEXT_PUBLIC_API_URL ?? "(undefined, using fallback)");
-      const res = await fetch(loginUrl, {
+      const res = await fetch(`${API_BASE}/auth/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(values),
       });
 
+      const data = await res.json().catch(() => ({}));
+
       if (!res.ok) {
-        const text = await res.text();
-        console.error("API Error Response:", text);
-        let message = "Error al iniciar sesión";
-        try {
-          const errJson = JSON.parse(text);
-          if (errJson?.message) message = errJson.message;
-        } catch {
-          message = `Error ${res.status}: ${res.statusText}`;
-        }
+        const message =
+          data?.message ?? (Array.isArray(data?.message) ? data.message[0] : null) ?? `Error ${res.status}`;
         throw new Error(message);
       }
 
-      const data = await res.json();
-
-      // 1. Guardar el Token en una Cookie (Pasaporte)
-      Cookies.set("token", data.access_token, { expires: 1 }); // Dura 1 día
-      
-      // 2. Guardar datos del usuario (opcional)
-      localStorage.setItem("user", JSON.stringify(data.user));
-
-      // 3. Redirigir al Dashboard de su empresa
-      router.push(`/dashboard/${data.user.companyId}`);
-      
-    } catch (err: any) {
-      console.error(err);
-      setError("Credenciales incorrectas o error de conexión");
+      router.push("/login?registered=1");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Error al crear la cuenta");
     } finally {
       setLoading(false);
     }
@@ -110,31 +84,70 @@ export default function LoginPage() {
       <Card className="w-full max-w-md shadow-xl border-slate-200">
         <CardHeader className="space-y-1">
           <div className="w-12 h-12 bg-slate-900 rounded-lg flex items-center justify-center mb-4 mx-auto shadow-md">
-            <span className="text-white text-2xl">🔐</span>
+            <span className="text-white text-2xl">📋</span>
           </div>
-          <CardTitle className="text-2xl text-center font-bold text-slate-900">Bienvenido de nuevo</CardTitle>
+          <CardTitle className="text-2xl text-center font-bold text-slate-900">
+            Crear cuenta
+          </CardTitle>
           <CardDescription className="text-center text-slate-500">
-            Ingresa tus credenciales para acceder al ERP
+            Registra tu empresa y comienza a usar el ERP
           </CardDescription>
         </CardHeader>
         <CardContent>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-              
               <FormField
                 control={form.control}
-                name="email"
+                name="company_name"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Correo Electrónico</FormLabel>
+                    <FormLabel>Nombre de la empresa</FormLabel>
                     <FormControl>
-                      <Input placeholder="admin@miempresa.com" {...field} className="bg-white" />
+                      <Input placeholder="Mi Empresa S.A." {...field} className="bg-white" />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
-
+              <FormField
+                control={form.control}
+                name="company_ruc_nit"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>RUC / NIT</FormLabel>
+                    <FormControl>
+                      <Input placeholder="1234567890001" {...field} className="bg-white" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="full_name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Tu nombre completo</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Juan Pérez" {...field} className="bg-white" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="email"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Correo electrónico</FormLabel>
+                    <FormControl>
+                      <Input type="email" placeholder="admin@miempresa.com" {...field} className="bg-white" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
               <FormField
                 control={form.control}
                 name="password"
@@ -149,31 +162,29 @@ export default function LoginPage() {
                 )}
               />
 
-              {success && (
-                <div className="p-3 bg-green-50 border border-green-200 text-green-700 rounded-md text-sm text-center font-medium">
-                  ✓ {success}
-                </div>
-              )}
               {error && (
-                <div className="p-3 bg-red-50 border border-red-200 text-red-600 rounded-md text-sm text-center font-medium animate-pulse">
+                <div className="p-3 bg-red-50 border border-red-200 text-red-600 rounded-md text-sm text-center font-medium">
                   ⚠️ {error}
                 </div>
               )}
 
-              <Button type="submit" className="w-full bg-slate-900 hover:bg-slate-800 transition-all mt-2" disabled={loading}>
-                {loading ? "Verificando..." : "Ingresar al Sistema"}
+              <Button
+                type="submit"
+                className="w-full bg-slate-900 hover:bg-slate-800 transition-all mt-2"
+                disabled={loading}
+              >
+                {loading ? "Creando cuenta..." : "Crear cuenta"}
               </Button>
             </form>
           </Form>
         </CardContent>
         <CardFooter className="flex flex-col gap-2 border-t bg-slate-50/50 pt-4 pb-6">
           <p className="text-sm text-slate-500">
-            ¿No tienes cuenta?{" "}
-            <Link href="/register" className="font-medium text-slate-900 hover:underline">
-              Registrarse
+            ¿Ya tienes cuenta?{" "}
+            <Link href="/login" className="font-medium text-slate-900 hover:underline">
+              Iniciar sesión
             </Link>
           </p>
-          <p className="text-xs text-slate-400">Protegido por Nexus Security v1.0</p>
         </CardFooter>
       </Card>
     </div>

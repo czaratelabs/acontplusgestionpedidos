@@ -124,6 +124,7 @@ export function UserDialog({ companyId, initialData = null, open: controlledOpen
         method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
+        credentials: "include",
       });
 
       const data = await res.json().catch(() => ({}));

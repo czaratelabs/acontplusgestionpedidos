@@ -21,8 +21,7 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/use-toast";
 import { Eye } from "lucide-react";
-import { formatInTimeZone } from "date-fns-tz";
-import { es } from "date-fns/locale";
+import { DateFormatter } from "@/components/date-formatter";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
@@ -37,22 +36,6 @@ type AuditLogItem = {
   new_values: Record<string, unknown> | null;
   created_at: string;
 };
-
-function formatEcuadorTime(dateString: string): string {
-  if (!dateString) return "-";
-
-  const utcIsoString = dateString.endsWith("Z") ? dateString : `${dateString}Z`;
-  const timeZone = "America/Guayaquil";
-
-  try {
-    return formatInTimeZone(utcIsoString, timeZone, "dd/MM/yyyy, HH:mm", {
-      locale: es,
-    });
-  } catch (error) {
-    console.error("Date formatting error:", error);
-    return dateString;
-  }
-}
 
 function ActionBadge({ action }: { action: string }) {
   if (action === "CREATE")
@@ -86,9 +69,7 @@ function AuditDetailsDialog({
         <div className="space-y-4 flex-1 min-h-0">
           <div className="text-sm text-slate-500">
             {log.entity_name} · <ActionBadge action={log.action} /> ·{" "}
-            <span suppressHydrationWarning>
-              {formatEcuadorTime(log.created_at)}
-            </span>
+            <DateFormatter dateString={log.created_at} />
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 flex-1 min-h-0">
             <div className="flex flex-col min-h-0">
@@ -238,9 +219,7 @@ export default function AuditPage({
                     logs.map((log) => (
                       <TableRow key={log.id}>
                         <TableCell className="text-sm text-slate-600">
-                          <span suppressHydrationWarning>
-                            {formatEcuadorTime(log.created_at)}
-                          </span>
+                          <DateFormatter dateString={log.created_at} />
                         </TableCell>
                         <TableCell className="text-sm">
                           {displayUser(log)}

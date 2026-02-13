@@ -10,9 +10,6 @@ export class CreateUserDto {
   @IsString()
   password: string;
 
-  @IsString()
-  companyId: string;
-
   @IsOptional()
   @IsString()
   role?: string = 'admin';

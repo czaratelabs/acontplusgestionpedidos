@@ -1,4 +1,5 @@
 import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ClsModule } from 'nestjs-cls';
@@ -7,6 +8,7 @@ import { AppService } from './app.service';
 import { CompaniesModule } from './companies/companies.module';
 import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
+import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { EstablishmentsModule } from './establishments/establishments.module';
 import { EmissionPointsModule } from './emission-points/emission-points.module';
 import { WarehousesModule } from './warehouses/warehouses.module';
@@ -29,6 +31,7 @@ import { AuthClsMiddleware } from './common/auth-cls.middleware';
       username: 'admin',
       password: 'adminpassword',
       database: 'erp_db',
+      extra: { options: '-c timezone=America/Guayaquil' },
       autoLoadEntities: true,
       synchronize: true,
       subscribers: [AuditSubscriber],
@@ -43,7 +46,11 @@ import { AuthClsMiddleware } from './common/auth-cls.middleware';
     AuditLogsModule,
   ],
   controllers: [AppController],
-  providers: [AppService, AuthClsMiddleware],
+  providers: [
+    AppService,
+    AuthClsMiddleware,
+    { provide: APP_GUARD, useClass: JwtAuthGuard },
+  ],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {

@@ -6,8 +6,8 @@ import {
   RemoveEvent,
 } from 'typeorm';
 import { AuditLog, AuditAction } from './entities/audit-log.entity';
-import { getAuditUser } from '../common/audit-context';
 import { Company } from '../companies/entities/company.entity';
+import { getClsServiceForAudit } from '../common/audit-context';
 import { Establishment } from '../establishments/entities/establishment.entity';
 import { EmissionPoint } from '../emission-points/entities/emission-point.entity';
 import { Warehouse } from '../warehouses/entities/warehouse.entity';
@@ -39,7 +39,20 @@ function getCompanyId(entity: object): string | null {
   if (e.company?.id) return String(e.company.id);
   if (e.establishment?.company?.id) return String(e.establishment.company.id);
   if (e.companyId) return String(e.companyId);
+  if (e.company_id) return String(e.company_id);
   return null;
+}
+
+/** For UPDATE: resolve company_id from entity first, then fallback to databaseEntity (prevents NULL on partial User updates). */
+function getCompanyIdForUpdate(event: UpdateEvent<object>): string | null {
+  const entity = event.entity as any;
+  const databaseEntity = event.databaseEntity as any;
+  let companyId = getCompanyId(entity);
+  if (!companyId && databaseEntity) {
+    companyId = getCompanyId(databaseEntity) ?? databaseEntity.company_id ?? databaseEntity.company?.id ?? null;
+    if (companyId != null) companyId = String(companyId);
+  }
+  return companyId;
 }
 
 function sanitize(obj: object | undefined): Record<string, unknown> | null {
@@ -57,19 +70,28 @@ function sanitize(obj: object | undefined): Record<string, unknown> | null {
   return out;
 }
 
+/** User shape from CLS: JWT strategy sets { id, full_name, email }; middleware may set only { id }. */
+function getPerformedBy(): string | null {
+  const cls = getClsServiceForAudit();
+  if (!cls) return null;
+  const user = cls.get<{ id?: string } | undefined>('user');
+  if (user?.id) return String(user.id);
+  return null;
+}
+
 @EventSubscriber()
 export class AuditSubscriber implements EntitySubscriberInterface {
   afterInsert(event: InsertEvent<object>): void {
     const entity = event.entity as any;
     if (!entity || !shouldAudit(entity)) return;
-    const user = getAuditUser();
+    const performedBy = getPerformedBy();
     const repo = event.manager.getRepository(AuditLog);
     const log = repo.create({
       entity_name: getEntityName(entity),
       entity_id: String(entity.id),
       company_id: getCompanyId(entity),
       action: AuditAction.CREATE,
-      performed_by: user?.id ?? null,
+      performed_by: performedBy,
       old_values: null,
       new_values: sanitize(entity),
     });
@@ -80,14 +102,14 @@ export class AuditSubscriber implements EntitySubscriberInterface {
     const entity = event.entity as any;
     if (!entity || !shouldAudit(entity)) return;
     const databaseEntity = event.databaseEntity as any;
-    const user = getAuditUser();
+    const performedBy = getPerformedBy();
     const repo = event.manager.getRepository(AuditLog);
     const log = repo.create({
       entity_name: getEntityName(entity),
       entity_id: String(entity.id),
-      company_id: getCompanyId(entity),
+      company_id: getCompanyIdForUpdate(event),
       action: AuditAction.UPDATE,
-      performed_by: user?.id ?? null,
+      performed_by: performedBy,
       old_values: sanitize(databaseEntity),
       new_values: sanitize(entity),
     });
@@ -97,14 +119,14 @@ export class AuditSubscriber implements EntitySubscriberInterface {
   beforeRemove(event: RemoveEvent<object>): void {
     const entity = (event.databaseEntity ?? event.entity) as any;
     if (!entity || !shouldAudit(entity)) return;
-    const user = getAuditUser();
+    const performedBy = getPerformedBy();
     const repo = event.manager.getRepository(AuditLog);
     const log = repo.create({
       entity_name: getEntityName(entity),
       entity_id: String(entity.id),
       company_id: getCompanyId(entity),
       action: AuditAction.DELETE,
-      performed_by: user?.id ?? null,
+      performed_by: performedBy,
       old_values: sanitize(entity),
       new_values: null,
     });

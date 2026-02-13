@@ -1,12 +1,15 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, ConflictException } from '@nestjs/common';
 import { UsersService } from '../users/users.service';
+import { CompaniesService } from '../companies/companies.service';
 import { JwtService } from '@nestjs/jwt';
-import * as bcrypt from 'bcrypt'; // 👈 Importamos la herramienta de desencriptación
+import * as bcrypt from 'bcrypt';
+import { RegisterDto } from './dto/register.dto';
 
 @Injectable()
 export class AuthService {
   constructor(
     private usersService: UsersService,
+    private companiesService: CompaniesService,
     private jwtService: JwtService,
   ) {}
 
@@ -44,6 +47,30 @@ export class AuthService {
         role: user.role,
         companyId: user.company.id
       }
+    };
+  }
+
+  async register(dto: RegisterDto): Promise<{ message: string; companyId: string }> {
+    const existingUser = await this.usersService.findOneByEmail(dto.email);
+    if (existingUser) {
+      throw new ConflictException('Ya existe una cuenta con este correo electrónico');
+    }
+
+    const company = await this.companiesService.create({
+      name: dto.company_name,
+      ruc_nit: dto.company_ruc_nit,
+    });
+
+    await this.usersService.createEmployee(company.id, {
+      full_name: dto.full_name,
+      email: dto.email,
+      password: dto.password,
+      role: 'admin',
+    });
+
+    return {
+      message: 'Cuenta creada correctamente. Ya puedes iniciar sesión.',
+      companyId: company.id,
     };
   }
 }

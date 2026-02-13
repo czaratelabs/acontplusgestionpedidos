@@ -18,6 +18,13 @@ export class UsersService {
     private companyRepository: Repository<Company>,
   ) {}
 
+  async findOneById(id: string): Promise<User | null> {
+    return this.userRepository.findOne({
+      where: { id },
+      relations: ['company'],
+    });
+  }
+
   // Buscar por email (para Login)
   async findOneByEmail(email: string): Promise<User | null> {
     return this.userRepository.findOne({ 
@@ -58,7 +65,10 @@ export class UsersService {
   }
 
   async update(id: string, dto: UpdateUserDto): Promise<User> {
-    const user = await this.userRepository.findOneBy({ id });
+    const user = await this.userRepository.findOne({
+      where: { id },
+      relations: ['company'],
+    });
     if (!user) throw new NotFoundException('Usuario no encontrado');
 
     if (dto.full_name !== undefined) user.full_name = dto.full_name;

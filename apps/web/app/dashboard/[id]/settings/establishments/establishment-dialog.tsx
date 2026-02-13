@@ -100,6 +100,7 @@ export function EstablishmentDialog({ companyId, initialData = null }: Establish
         method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
+        credentials: "include",
       });
 
       const errorData = await res.json().catch(() => ({}));

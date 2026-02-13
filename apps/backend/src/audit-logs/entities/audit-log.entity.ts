@@ -50,6 +50,6 @@ export class AuditLog {
   @Column({ type: 'jsonb', nullable: true, name: 'new_values' })
   new_values: Record<string, unknown> | null;
 
-  @CreateDateColumn({ name: 'created_at' })
+  @CreateDateColumn({ name: 'created_at', type: 'timestamp' })
   created_at: Date;
 }
