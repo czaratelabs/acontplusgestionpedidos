@@ -1,6 +1,7 @@
-// En 2026, el fetch está super-vitaminado
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+
 export async function getCompanies() {
-    const res = await fetch('http://localhost:3000/companies', {
+    const res = await fetch(`${API_BASE}/companies`, {
       cache: 'no-store', // Datos en tiempo real
       // next: { tags: ['companies'] } // Para revalidación bajo demanda
     });
@@ -13,7 +14,7 @@ export async function getCompanies() {
   // Busca una empresa específica por su ID
 export async function getCompany(id: string) {
   try {
-    const res = await fetch(`http://localhost:3000/companies/${id}`, {
+    const res = await fetch(`${API_BASE}/companies/${id}`, {
       cache: 'no-store',
     });
     
@@ -28,7 +29,7 @@ export async function getCompany(id: string) {
 // Obtener usuarios de una empresa
 export async function getCompanyUsers(companyId: string) {
   try {
-    const res = await fetch(`http://localhost:3000/users/company/${companyId}`, {
+    const res = await fetch(`${API_BASE}/users/company/${companyId}`, {
       cache: 'no-store', // Para que siempre traiga datos frescos
     });
     if (!res.ok) return [];

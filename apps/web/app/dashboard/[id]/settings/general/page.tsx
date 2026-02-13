@@ -37,7 +37,7 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/use-toast";
 
-const API_BASE = "http://localhost:3000";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
 type Company = {
   id: string;
@@ -107,7 +107,7 @@ export default function GeneralSettingsPage({
 
   async function fetchCompany() {
     try {
-      const res = await fetch(`${API_BASE}/companies/${companyId}`);
+      const res = await fetch(`${API_BASE}/companies/${companyId}`, { credentials: "include" });
       if (!res.ok) return;
       const data: Company = await res.json();
       setCompany(data);
@@ -122,7 +122,7 @@ export default function GeneralSettingsPage({
 
   async function fetchTaxes() {
     try {
-      const res = await fetch(`${API_BASE}/taxes/company/${companyId}`);
+      const res = await fetch(`${API_BASE}/taxes/company/${companyId}`, { credentials: "include" });
       if (!res.ok) return;
       const data = await res.json();
       setTaxes(data);
@@ -161,6 +161,7 @@ export default function GeneralSettingsPage({
           decimal_precision: values.decimal_precision,
           prevent_negative_stock: values.prevent_negative_stock,
         }),
+        credentials: "include",
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.message || "Error al guardar");
@@ -208,6 +209,7 @@ export default function GeneralSettingsPage({
         method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
+        credentials: "include",
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.message || "Error al guardar");
@@ -233,7 +235,7 @@ export default function GeneralSettingsPage({
   async function onDeleteTax(taxId: string) {
     if (!confirm("¿Eliminar este impuesto?")) return;
     try {
-      const res = await fetch(`${API_BASE}/taxes/${taxId}`, { method: "DELETE" });
+      const res = await fetch(`${API_BASE}/taxes/${taxId}`, { method: "DELETE", credentials: "include" });
       if (!res.ok) throw new Error("Error al eliminar");
       fetchTaxes();
       router.refresh();

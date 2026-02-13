@@ -35,7 +35,7 @@ type Company = {
   updated_at: string;
 };
 
-const API_BASE = "http://localhost:3000";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
 export default function CompanySettingsPage({
   params,
@@ -71,7 +71,7 @@ export default function CompanySettingsPage({
     let cancelled = false;
     async function fetchCompany() {
       try {
-        const res = await fetch(`${API_BASE}/companies/${id}`);
+        const res = await fetch(`${API_BASE}/companies/${id}`, { credentials: "include" });
         if (!res.ok) {
           if (!cancelled) setErrorMessage("No se pudo cargar la empresa.");
           return;
@@ -115,6 +115,7 @@ export default function CompanySettingsPage({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
+        credentials: "include",
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {

@@ -26,6 +26,8 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+
 // Esquema de validación (Reglas del juego)
 const formSchema = z.object({
   email: z.string().email("Correo electrónico inválido"),
@@ -52,18 +54,29 @@ export default function LoginPage() {
     setError("");
 
     try {
-      // Petición al Backend
-      const res = await fetch("http://localhost:3000/auth/login", {
+      const loginUrl = `${API_BASE}/auth/login`;
+      console.log("🔗 Attempting Login to:", loginUrl);
+      console.log("🔗 NEXT_PUBLIC_API_URL:", process.env.NEXT_PUBLIC_API_URL ?? "(undefined, using fallback)");
+      const res = await fetch(loginUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(values),
       });
 
-      const data = await res.json();
-
       if (!res.ok) {
-        throw new Error(data.message || "Error al iniciar sesión");
+        const text = await res.text();
+        console.error("API Error Response:", text);
+        let message = "Error al iniciar sesión";
+        try {
+          const errJson = JSON.parse(text);
+          if (errJson?.message) message = errJson.message;
+        } catch {
+          message = `Error ${res.status}: ${res.statusText}`;
+        }
+        throw new Error(message);
       }
+
+      const data = await res.json();
 
       // 1. Guardar el Token en una Cookie (Pasaporte)
       Cookies.set("token", data.access_token, { expires: 1 }); // Dura 1 día

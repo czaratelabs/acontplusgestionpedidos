@@ -4,9 +4,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 
-// Función para obtener datos (poner en api.ts idealmente)
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+
 async function getEstablishments(companyId: string) {
-  const res = await fetch(`http://localhost:3000/establishments/company/${companyId}`, { cache: 'no-store' });
+  const res = await fetch(`${API_BASE}/establishments/company/${companyId}`, { cache: 'no-store' });
   if (!res.ok) return [];
   return res.json();
 }
