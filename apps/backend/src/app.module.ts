@@ -13,6 +13,7 @@ import { EstablishmentsModule } from './establishments/establishments.module';
 import { EmissionPointsModule } from './emission-points/emission-points.module';
 import { WarehousesModule } from './warehouses/warehouses.module';
 import { TaxesModule } from './taxes/taxes.module';
+import { ContactsModule } from './contacts/contacts.module';
 import { AuditLogsModule } from './audit-logs/audit-logs.module';
 import { AuditSubscriber } from './audit-logs/audit.subscriber';
 import { AuthClsMiddleware } from './common/auth-cls.middleware';
@@ -43,6 +44,7 @@ import { AuthClsMiddleware } from './common/auth-cls.middleware';
     EmissionPointsModule,
     WarehousesModule,
     TaxesModule,
+    ContactsModule,
     AuditLogsModule,
   ],
   controllers: [AppController],

@@ -9,6 +9,7 @@ import {
 
 import { Establishment } from '../../establishments/entities/establishment.entity';
 import { Tax } from '../../taxes/entities/tax.entity';
+import { Contact } from '../../contacts/entities/contact.entity';
 
 @Entity('companies')
 export class Company {
@@ -53,12 +54,7 @@ export class Company {
 
   @OneToMany(() => Tax, (tax) => tax.company)
   taxes: Tax[];
+
+  @OneToMany(() => Contact, (contact) => contact.company)
+  contacts: Contact[];
 }
-  // import { TypeOrmModule } from '@nestjs/typeorm';
-  // import { Company } from './company.entity';
-  // @Module({
-  //   imports: [TypeOrmModule.forFeature([Company])],
-  //   controllers: [...],
-  //   providers: [...],
-  // })
-  // export class CompaniesModule {}

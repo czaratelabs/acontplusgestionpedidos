@@ -13,6 +13,7 @@ import { EmissionPoint } from '../emission-points/entities/emission-point.entity
 import { Warehouse } from '../warehouses/entities/warehouse.entity';
 import { User } from '../users/entities/user.entity';
 import { Tax } from '../taxes/entities/tax.entity';
+import { Contact } from '../contacts/entities/contact.entity';
 
 const ALLOWED_ENTITIES = [
   Company,
@@ -21,6 +22,7 @@ const ALLOWED_ENTITIES = [
   Warehouse,
   User,
   Tax,
+  Contact,
 ];
 
 function shouldAudit(entity: unknown): boolean {
