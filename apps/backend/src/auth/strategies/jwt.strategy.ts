@@ -4,9 +4,12 @@ import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
 import { ClsService } from 'nestjs-cls';
 import { UsersService } from '../../users/users.service';
+
 export interface JwtPayload {
   sub: string;
-  email?: string;
+  username?: string;
+  companyId?: string;
+  role?: string;
 }
 
 @Injectable()
@@ -31,14 +34,22 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
 
   async validate(
     payload: JwtPayload,
-  ): Promise<{ id: string; full_name: string; email: string; role: string }> {
+  ): Promise<{ id: string; full_name: string; email: string; role: string; companyId?: string }> {
     const user = await this.usersService.findOneById(payload.sub);
     if (!user) throw new UnauthorizedException('Usuario no encontrado');
+
+    const companyId = payload.companyId ?? null;
+    const role =
+      payload.role ??
+      (companyId ? await this.usersService.getRoleForCompany(payload.sub, companyId) : null) ??
+      'seller';
+
     const safeUser = {
       id: user.id,
       full_name: user.full_name,
       email: user.email,
-      role: user.role,
+      role,
+      companyId: companyId ?? undefined,
     };
     this.cls.set('user', safeUser);
     return safeUser;

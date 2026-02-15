@@ -27,14 +27,19 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-// Usar proxy de Next.js para evitar CORS y "Failed to fetch"
 const LOGIN_URL = "/api/auth/login";
+const SELECT_COMPANY_URL = "/api/auth/select-company";
 
-// Esquema de validación (Reglas del juego)
 const formSchema = z.object({
   email: z.string().email("Correo electrónico inválido"),
   password: z.string().min(6, "La contraseña debe tener al menos 6 caracteres"),
 });
+
+type CompanyOption = {
+  companyId: string;
+  companyName?: string;
+  role: string;
+};
 
 export default function LoginPage() {
   const router = useRouter();
@@ -43,6 +48,14 @@ export default function LoginPage() {
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
 
+  const [step, setStep] = useState<"credentials" | "select_company">(
+    "credentials"
+  );
+  const [companies, setCompanies] = useState<CompanyOption[]>([]);
+  const [sessionToken, setSessionToken] = useState("");
+  const [selectedCompanyId, setSelectedCompanyId] = useState("");
+  const [userName, setUserName] = useState("");
+
   useEffect(() => {
     if (searchParams.get("registered") === "1") {
       setSuccess("Cuenta creada. Ya puedes iniciar sesión.");
@@ -50,7 +63,6 @@ export default function LoginPage() {
     }
   }, [searchParams, router]);
 
-  // Inicializar el formulario
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -59,7 +71,6 @@ export default function LoginPage() {
     },
   });
 
-  // Función que se ejecuta al enviar
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setLoading(true);
     setError("");
@@ -71,36 +82,71 @@ export default function LoginPage() {
         body: JSON.stringify(values),
       });
 
+      const data = await res.json().catch(() => ({}));
+
       if (!res.ok) {
-        const text = await res.text();
-        console.error("API Error Response:", text);
-        let message = "Error al iniciar sesión";
-        try {
-          const errJson = JSON.parse(text);
-          if (errJson?.message) message = errJson.message;
-        } catch {
-          message = `Error ${res.status}: ${res.statusText}`;
-        }
+        const message = data?.message ?? `Error ${res.status}`;
         throw new Error(message);
       }
 
-      const data = await res.json();
-
-      // 1. Guardar el Token en una Cookie (Pasaporte)
-      Cookies.set("token", data.access_token, { expires: 1 }); // Dura 1 día
-      
-      // 2. Guardar datos del usuario (opcional)
-      localStorage.setItem("user", JSON.stringify(data.user));
-
-      // 3. Redirigir al Dashboard de su empresa
-      router.push(`/dashboard/${data.user.companyId}`);
-      
-    } catch (err: any) {
-      console.error(err);
-      setError(err?.message ?? "Credenciales incorrectas o error de conexión");
+      if (data.step === "select_company" && data.companies?.length > 1) {
+        setCompanies(data.companies);
+        setSessionToken(data.sessionToken);
+        setUserName(data.user?.name ?? "");
+        setStep("select_company");
+        setSelectedCompanyId(data.companies[0]?.companyId ?? "");
+      } else {
+        Cookies.set("token", data.access_token, { expires: 1 });
+        localStorage.setItem("user", JSON.stringify(data.user));
+        router.push(`/dashboard/${data.user.companyId}`);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Credenciales incorrectas");
     } finally {
       setLoading(false);
     }
+  }
+
+  async function handleSelectCompany() {
+    if (!selectedCompanyId || !sessionToken) return;
+    setLoading(true);
+    setError("");
+
+    try {
+      const res = await fetch(SELECT_COMPANY_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${sessionToken}`,
+        },
+        body: JSON.stringify({ companyId: selectedCompanyId }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        const message = data?.message ?? "Error al seleccionar empresa";
+        throw new Error(message);
+      }
+
+      Cookies.set("token", data.access_token, { expires: 1 });
+      localStorage.setItem("user", JSON.stringify(data.user));
+      router.push(`/dashboard/${data.user.companyId}`);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Error al seleccionar empresa"
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function handleBackToCredentials() {
+    setStep("credentials");
+    setError("");
+    setCompanies([]);
+    setSessionToken("");
+    setSelectedCompanyId("");
   }
 
   return (
@@ -110,64 +156,130 @@ export default function LoginPage() {
           <div className="w-12 h-12 bg-slate-900 rounded-lg flex items-center justify-center mb-4 mx-auto shadow-md">
             <span className="text-white text-2xl">🔐</span>
           </div>
-          <CardTitle className="text-2xl text-center font-bold text-slate-900">Bienvenido de nuevo</CardTitle>
+          <CardTitle className="text-2xl text-center font-bold text-slate-900">
+            {step === "select_company" ? "Selecciona la empresa" : "Bienvenido de nuevo"}
+          </CardTitle>
           <CardDescription className="text-center text-slate-500">
-            Ingresa tus credenciales para acceder al ERP
+            {step === "select_company"
+              ? `Hola ${userName}, elige con qué empresa deseas acceder.`
+              : "Ingresa tus credenciales para acceder al ERP"}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-              
-              <FormField
-                control={form.control}
-                name="email"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Correo Electrónico</FormLabel>
-                    <FormControl>
-                      <Input placeholder="admin@miempresa.com" {...field} className="bg-white" />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+          {step === "credentials" ? (
+            <Form {...form}>
+              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                <FormField
+                  control={form.control}
+                  name="email"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Correo Electrónico</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="admin@miempresa.com"
+                          {...field}
+                          className="bg-white"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-              <FormField
-                control={form.control}
-                name="password"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Contraseña</FormLabel>
-                    <FormControl>
-                      <Input type="password" placeholder="••••••" {...field} className="bg-white" />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                <FormField
+                  control={form.control}
+                  name="password"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Contraseña</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="password"
+                          placeholder="••••••"
+                          {...field}
+                          className="bg-white"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-              {success && (
-                <div className="p-3 bg-green-50 border border-green-200 text-green-700 rounded-md text-sm text-center font-medium">
-                  ✓ {success}
-                </div>
-              )}
+                {success && (
+                  <div className="p-3 bg-green-50 border border-green-200 text-green-700 rounded-md text-sm text-center font-medium">
+                    ✓ {success}
+                  </div>
+                )}
+                {error && (
+                  <div className="p-3 bg-red-50 border border-red-200 text-red-600 rounded-md text-sm text-center font-medium animate-pulse">
+                    ⚠️ {error}
+                  </div>
+                )}
+
+                <Button
+                  type="submit"
+                  className="w-full bg-slate-900 hover:bg-slate-800 transition-all mt-2"
+                  disabled={loading}
+                >
+                  {loading ? "Verificando..." : "Ingresar al Sistema"}
+                </Button>
+              </form>
+            </Form>
+          ) : (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-700">
+                  Empresa
+                </label>
+                <select
+                  value={selectedCompanyId}
+                  onChange={(e) => setSelectedCompanyId(e.target.value)}
+                  className="flex h-9 w-full rounded-md border border-input bg-white px-3 py-1 text-base shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                >
+                  {companies.map((c) => (
+                    <option key={c.companyId} value={c.companyId}>
+                      {c.companyName ?? c.companyId} ({c.role})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               {error && (
-                <div className="p-3 bg-red-50 border border-red-200 text-red-600 rounded-md text-sm text-center font-medium animate-pulse">
+                <div className="p-3 bg-red-50 border border-red-200 text-red-600 rounded-md text-sm text-center font-medium">
                   ⚠️ {error}
                 </div>
               )}
 
-              <Button type="submit" className="w-full bg-slate-900 hover:bg-slate-800 transition-all mt-2" disabled={loading}>
-                {loading ? "Verificando..." : "Ingresar al Sistema"}
-              </Button>
-            </form>
-          </Form>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="flex-1"
+                  onClick={handleBackToCredentials}
+                  disabled={loading}
+                >
+                  Volver
+                </Button>
+                <Button
+                  type="button"
+                  className="flex-1 bg-slate-900 hover:bg-slate-800"
+                  onClick={handleSelectCompany}
+                  disabled={loading}
+                >
+                  {loading ? "Accediendo..." : "Continuar"}
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
         <CardFooter className="flex flex-col gap-2 border-t bg-slate-50/50 pt-4 pb-6">
           <p className="text-sm text-slate-500">
             ¿No tienes cuenta?{" "}
-            <Link href="/register" className="font-medium text-slate-900 hover:underline">
+            <Link
+              href="/register"
+              className="font-medium text-slate-900 hover:underline"
+            >
               Registrarse
             </Link>
           </p>

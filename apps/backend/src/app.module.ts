@@ -16,6 +16,7 @@ import { TaxesModule } from './taxes/taxes.module';
 import { ContactsModule } from './contacts/contacts.module';
 import { AuditLogsModule } from './audit-logs/audit-logs.module';
 import { SystemSettingsModule } from './system-settings/system-settings.module';
+import { RolesModule } from './roles/roles.module';
 import { AuditSubscriber } from './audit-logs/audit.subscriber';
 import { TimestampSubscriber } from './common/timestamp.subscriber';
 import { AuthClsMiddleware } from './common/auth-cls.middleware';
@@ -49,6 +50,7 @@ import { AuthClsMiddleware } from './common/auth-cls.middleware';
     ContactsModule,
     AuditLogsModule,
     SystemSettingsModule,
+    RolesModule,
   ],
   controllers: [AppController],
   providers: [

@@ -3,17 +3,9 @@ import {
   PrimaryGeneratedColumn,
   Column,
   CreateDateColumn,
-  ManyToOne,
-  JoinColumn,
+  OneToMany,
 } from 'typeorm';
-import { Company } from '../../companies/entities/company.entity';
-
-// 1. Definimos los roles permitidos
-export enum UserRole {
-  OWNER = 'owner',
-  ADMIN = 'admin',
-  SELLER = 'seller',
-}
+import { UserCompany } from './user-company.entity';
 
 @Entity('users')
 export class User {
@@ -29,18 +21,12 @@ export class User {
   @Column()
   password_hash: string;
 
-  @Column({ default: 'seller' })
-  role: string;
-
   @Column({ default: true })
   is_active: boolean;
 
   @CreateDateColumn({ name: 'created_at' })
   created_at: Date;
 
-  @ManyToOne(() => Company, { nullable: false })
-  @JoinColumn({ name: 'company_id' })
-  company: Company;
+  @OneToMany(() => UserCompany, (uc) => uc.user)
+  userCompanies: UserCompany[];
 }
-// Importar TypeOrmModule.forFeature([User]) en el array de imports:
-// En el módulo correspondiente (por ejemplo, users.module.ts), agrega:cls

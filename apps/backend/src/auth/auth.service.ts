@@ -5,6 +5,12 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { RegisterDto } from './dto/register.dto';
 
+export interface CompanyAssignment {
+  companyId: string;
+  companyName?: string;
+  role: string;
+}
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -13,40 +19,145 @@ export class AuthService {
     private jwtService: JwtService,
   ) {}
 
-  async signIn(email: string, pass: string): Promise<any> {
-    // 1. Buscamos al usuario por email
+  async signIn(email: string, pass: string): Promise<
+    | {
+        step: 'select_company';
+        companies: CompanyAssignment[];
+        sessionToken: string;
+        user: { id: string; name: string; email: string };
+      }
+    | {
+        access_token: string;
+        user: {
+          id: string;
+          name: string;
+          email: string;
+          companies: CompanyAssignment[];
+          companyId: string;
+          role: string;
+        };
+      }
+  > {
     const user = await this.usersService.findOneByEmail(email);
-    
-    // Si no existe el usuario, lanzamos error
     if (!user) {
       throw new UnauthorizedException('Credenciales incorrectas');
     }
 
-    // 2. 🔐 VERIFICACIÓN REAL: Comparamos la contraseña plana con el Hash
     const isMatch = await bcrypt.compare(pass, user.password_hash);
-
-    // Si la contraseña no coincide...
     if (!isMatch) {
-      // (Opcional) Si tu usuario Admin original NO tiene hash, esto es un salvavidas temporal:
       if (user.password_hash === pass) {
-         // Esto permite entrar si la contraseña NO estaba encriptada (Legacy)
+        // Legacy: allow plain password (temporary)
       } else {
-         throw new UnauthorizedException('Credenciales incorrectas');
+        throw new UnauthorizedException('Credenciales incorrectas');
       }
     }
 
-    // 3. Generamos el Token con los datos correctos
-    const payload = { sub: user.id, username: user.email, role: user.role };
-    
+    const companies: CompanyAssignment[] = (user.userCompanies ?? [])
+      .filter((uc) => uc.isActive && uc.company)
+      .map((uc) => ({
+        companyId: uc.company.id,
+        companyName: uc.company.name,
+        role: uc.role?.name ?? 'seller',
+      }));
+
+    if (companies.length === 0) {
+      throw new UnauthorizedException(
+        'Usuario sin acceso a ninguna empresa. Contacte al administrador.',
+      );
+    }
+
+    if (companies.length > 1) {
+      const sessionToken = await this.jwtService.signAsync(
+        { sub: user.id, purpose: 'company_selection' },
+        { expiresIn: '5m' },
+      );
+      return {
+        step: 'select_company',
+        companies,
+        sessionToken,
+        user: {
+          id: user.id,
+          name: user.full_name,
+          email: user.email,
+        },
+      };
+    }
+
+    const primary = companies[0];
+    const payload = {
+      sub: user.id,
+      username: user.email,
+      companyId: primary.companyId,
+      role: primary.role,
+    };
+
     return {
       access_token: await this.jwtService.signAsync(payload),
       user: {
         id: user.id,
         name: user.full_name,
         email: user.email,
-        role: user.role,
-        companyId: user.company.id
-      }
+        companies,
+        companyId: primary.companyId,
+        role: primary.role,
+      },
+    };
+  }
+
+  async selectCompany(
+    sessionToken: string,
+    companyId: string,
+  ): Promise<{
+    access_token: string;
+    user: {
+      id: string;
+      name: string;
+      email: string;
+      companies: CompanyAssignment[];
+      companyId: string;
+      role: string;
+    };
+  }> {
+    const payload = await this.jwtService.verifyAsync(sessionToken);
+    if (payload.purpose !== 'company_selection') {
+      throw new UnauthorizedException('Token inválido. Vuelve a iniciar sesión.');
+    }
+
+    const user = await this.usersService.findOneById(payload.sub);
+    if (!user) throw new UnauthorizedException('Usuario no encontrado');
+
+    const assignment = (user.userCompanies ?? []).find(
+      (uc) => uc.companyId === companyId && uc.isActive && uc.company,
+    );
+    if (!assignment) {
+      throw new UnauthorizedException('No tienes acceso a esta empresa');
+    }
+
+    const jwtPayload = {
+      sub: user.id,
+      username: user.email,
+      companyId: assignment.companyId,
+      role: assignment.role?.name ?? 'seller',
+    };
+
+    const companies: CompanyAssignment[] = (user.userCompanies ?? [])
+      .filter((uc) => uc.isActive && uc.company)
+      .map((uc) => ({
+        companyId: uc.company.id,
+        companyName: uc.company.name,
+        role: uc.role?.name ?? 'seller',
+      }));
+
+    return {
+      access_token: await this.jwtService.signAsync(jwtPayload),
+      user: {
+        id: user.id,
+        name: user.full_name,
+        email: user.email,
+        companies,
+        companyId: assignment.companyId,
+        role: assignment.role?.name ?? 'seller',
+      },
     };
   }
 

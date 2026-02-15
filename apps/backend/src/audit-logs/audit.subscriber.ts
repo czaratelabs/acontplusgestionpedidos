@@ -14,6 +14,8 @@ import { Warehouse } from '../warehouses/entities/warehouse.entity';
 import { User } from '../users/entities/user.entity';
 import { Tax } from '../taxes/entities/tax.entity';
 import { Contact } from '../contacts/entities/contact.entity';
+import { UserCompany } from '../users/entities/user-company.entity';
+import { Role } from '../roles/entities/role.entity';
 import {
   SystemSetting,
   SYSTEM_TIMEZONE_KEY,
@@ -25,6 +27,8 @@ const ALLOWED_ENTITIES = [
   EmissionPoint,
   Warehouse,
   User,
+  UserCompany,
+  Role,
   Tax,
   Contact,
 ];
