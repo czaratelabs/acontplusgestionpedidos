@@ -22,6 +22,7 @@ import {
 import { useToast } from "@/components/ui/use-toast";
 import { Eye } from "lucide-react";
 import { DateFormatter } from "@/components/date-formatter";
+import { useCompanyTimezone } from "@/hooks/use-timezone";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
@@ -51,10 +52,12 @@ function AuditDetailsDialog({
   log,
   open,
   onOpenChange,
+  timeZone,
 }: {
   log: AuditLogItem | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  timeZone?: string;
 }) {
   if (!log) return null;
   return (
@@ -69,7 +72,7 @@ function AuditDetailsDialog({
         <div className="space-y-4 flex-1 min-h-0">
           <div className="text-sm text-slate-500">
             {log.entity_name} · <ActionBadge action={log.action} /> ·{" "}
-            <DateFormatter dateString={log.created_at} />
+            <DateFormatter dateString={log.created_at} timeZone={timeZone} />
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 flex-1 min-h-0">
             <div className="flex flex-col min-h-0">
@@ -117,6 +120,7 @@ export default function AuditPage({
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [selectedLog, setSelectedLog] = useState<AuditLogItem | null>(null);
   const { toast } = useToast();
+  const { timeZone } = useCompanyTimezone(companyId);
 
   useEffect(() => {
     let cancelled = false;
@@ -219,7 +223,7 @@ export default function AuditPage({
                     logs.map((log) => (
                       <TableRow key={log.id}>
                         <TableCell className="text-sm text-slate-600">
-                          <DateFormatter dateString={log.created_at} />
+                          <DateFormatter dateString={log.created_at} timeZone={timeZone} />
                         </TableCell>
                         <TableCell className="text-sm">
                           {displayUser(log)}
@@ -279,6 +283,7 @@ export default function AuditPage({
         log={selectedLog}
         open={detailsOpen}
         onOpenChange={setDetailsOpen}
+        timeZone={timeZone}
       />
     </div>
   );

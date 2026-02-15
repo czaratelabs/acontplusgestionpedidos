@@ -6,6 +6,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { AppModule } from './app.module';
 import { setClsServiceForAudit } from './common/audit-context';
+import { HttpExceptionFilter } from './common/http-exception.filter';
 import cookieParser from 'cookie-parser';
 
 async function bootstrap() {
@@ -14,6 +15,7 @@ async function bootstrap() {
   const cls = app.get(ClsService);
   setClsServiceForAudit(cls);
 
+  app.useGlobalFilters(new HttpExceptionFilter());
   app.useGlobalPipes(new ValidationPipe({ whitelist: true }));
   app.use(cookieParser());
 

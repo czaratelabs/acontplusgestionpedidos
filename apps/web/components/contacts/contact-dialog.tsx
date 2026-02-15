@@ -503,7 +503,9 @@ export function ContactDialog({
 
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(data.message || "Error al guardar");
+        const msg = data.message;
+        const text = Array.isArray(msg) ? msg[0] : msg;
+        throw new Error(typeof text === "string" ? text : "Error al guardar");
       }
 
       setOpen(false);

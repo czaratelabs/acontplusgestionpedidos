@@ -15,7 +15,9 @@ import { WarehousesModule } from './warehouses/warehouses.module';
 import { TaxesModule } from './taxes/taxes.module';
 import { ContactsModule } from './contacts/contacts.module';
 import { AuditLogsModule } from './audit-logs/audit-logs.module';
+import { SystemSettingsModule } from './system-settings/system-settings.module';
 import { AuditSubscriber } from './audit-logs/audit.subscriber';
+import { TimestampSubscriber } from './common/timestamp.subscriber';
 import { AuthClsMiddleware } from './common/auth-cls.middleware';
 
 @Module({
@@ -35,7 +37,7 @@ import { AuthClsMiddleware } from './common/auth-cls.middleware';
       extra: { options: '-c timezone=America/Guayaquil' },
       autoLoadEntities: true,
       synchronize: true,
-      subscribers: [AuditSubscriber],
+      subscribers: [AuditSubscriber, TimestampSubscriber],
     }),
     CompaniesModule,
     UsersModule,
@@ -46,6 +48,7 @@ import { AuthClsMiddleware } from './common/auth-cls.middleware';
     TaxesModule,
     ContactsModule,
     AuditLogsModule,
+    SystemSettingsModule,
   ],
   controllers: [AppController],
   providers: [

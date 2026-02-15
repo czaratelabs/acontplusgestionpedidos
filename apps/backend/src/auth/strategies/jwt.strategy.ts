@@ -29,10 +29,17 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     });
   }
 
-  async validate(payload: JwtPayload): Promise<{ id: string; full_name: string; email: string }> {
+  async validate(
+    payload: JwtPayload,
+  ): Promise<{ id: string; full_name: string; email: string; role: string }> {
     const user = await this.usersService.findOneById(payload.sub);
     if (!user) throw new UnauthorizedException('Usuario no encontrado');
-    const safeUser = { id: user.id, full_name: user.full_name, email: user.email };
+    const safeUser = {
+      id: user.id,
+      full_name: user.full_name,
+      email: user.email,
+      role: user.role,
+    };
     this.cls.set('user', safeUser);
     return safeUser;
   }

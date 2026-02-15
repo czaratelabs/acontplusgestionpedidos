@@ -56,13 +56,12 @@ export class ContactsService {
 
     const normalizedTaxId = this.normalizeTaxId(dto.taxId, dto.sriDocumentTypeCode);
     const candidates = this.getTaxIdCandidates(normalizedTaxId);
-    const existing = await this.contactRepo.findOne({
-      where: candidates.map((taxId) => ({
-        company: { id: companyId },
-        taxId,
-      })),
-      relations: ['company'],
-    });
+    const existing = await this.contactRepo
+      .createQueryBuilder('contact')
+      .leftJoinAndSelect('contact.company', 'company')
+      .where('contact.companyId = :companyId', { companyId })
+      .andWhere('contact.taxId IN (:...candidates)', { candidates })
+      .getOne();
 
     if (existing) {
       if (normalizedTaxId === CONSUMIDOR_FINAL_TAX_ID) {

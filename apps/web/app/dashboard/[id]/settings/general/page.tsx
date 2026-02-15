@@ -6,6 +6,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useRouter } from "next/navigation";
 import { Pencil, Trash2 } from "lucide-react";
+import Cookies from "js-cookie";
+import { jwtDecode } from "jwt-decode";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,8 +38,20 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/use-toast";
+import { CURRENCY_OPTIONS } from "@/lib/currency";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+
+const SYSTEM_TIMEZONE_KEY = "SYSTEM_TIMEZONE";
+const SYSTEM_CURRENCY_KEY = "SYSTEM_CURRENCY";
+
+const TIMEZONE_OPTIONS: { value: string; label: string }[] = [
+  { value: "America/Guayaquil", label: "America/Guayaquil (Ecuador)" },
+  { value: "America/Bogota", label: "America/Bogota (Colombia)" },
+  { value: "America/New_York", label: "America/New_York (EST/EDT)" },
+  { value: "Europe/Madrid", label: "Europe/Madrid (España)" },
+  { value: "UTC", label: "UTC" },
+];
 
 type Company = {
   id: string;
@@ -78,8 +92,123 @@ export default function GeneralSettingsPage({
   const [taxDialogOpen, setTaxDialogOpen] = useState(false);
   const [editingTax, setEditingTax] = useState<Tax | null>(null);
   const [taxFormLoading, setTaxFormLoading] = useState(false);
+  const [userRole, setUserRole] = useState<string | null>(null);
+  const [systemTimezone, setSystemTimezone] = useState<string>("America/Guayaquil");
+  const [loadingTimezone, setLoadingTimezone] = useState(true);
+  const [savingTimezone, setSavingTimezone] = useState(false);
+  const [systemCurrency, setSystemCurrency] = useState<string>("USD");
+  const [loadingCurrency, setLoadingCurrency] = useState(true);
+  const [savingCurrency, setSavingCurrency] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
+
+  useEffect(() => {
+    const token = Cookies.get("token");
+    if (!token) {
+      router.replace(`/dashboard/${companyId}`);
+      return;
+    }
+    try {
+      const decoded = jwtDecode<{ role?: string }>(token);
+      const role = decoded?.role ?? "seller";
+      setUserRole(role);
+      if (role !== "admin" && role !== "owner") {
+        router.replace(`/dashboard/${companyId}`);
+      }
+    } catch {
+      router.replace(`/dashboard/${companyId}`);
+    }
+  }, [companyId, router]);
+
+  const isAdminOrOwnerForEffect = userRole === "admin" || userRole === "owner";
+  const companyIdStable = companyId ?? "";
+  useEffect(() => {
+    if (!isAdminOrOwnerForEffect || !companyIdStable) return;
+    setLoadingTimezone(true);
+    const url = `${API_BASE}/system-settings/${SYSTEM_TIMEZONE_KEY}?companyId=${encodeURIComponent(companyIdStable)}`;
+    const controller = new AbortController();
+    fetch(url, { credentials: "include", signal: controller.signal })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { value?: string } | null) => {
+        if (data?.value) setSystemTimezone(data.value);
+      })
+      .catch(() => {})
+      .finally(() => setLoadingTimezone(false));
+    return () => controller.abort();
+  }, [isAdminOrOwnerForEffect, companyIdStable]);
+
+  useEffect(() => {
+    if (!isAdminOrOwnerForEffect || !companyIdStable) return;
+    setLoadingCurrency(true);
+    const url = `${API_BASE}/system-settings/${SYSTEM_CURRENCY_KEY}?companyId=${encodeURIComponent(companyIdStable)}`;
+    const controller = new AbortController();
+    fetch(url, { credentials: "include", signal: controller.signal })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { value?: string } | null) => {
+        if (data?.value) setSystemCurrency(data.value);
+      })
+      .catch(() => {})
+      .finally(() => setLoadingCurrency(false));
+    return () => controller.abort();
+  }, [isAdminOrOwnerForEffect, companyIdStable]);
+
+  async function onSaveTimezone(value: string) {
+    setSavingTimezone(true);
+    try {
+      const res = await fetch(`${API_BASE}/system-settings/${SYSTEM_TIMEZONE_KEY}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ companyId, value }),
+        credentials: "include",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || "Error al guardar");
+      setSystemTimezone(value);
+      router.refresh();
+      toast({
+        title: "Éxito",
+        description: "Zona horaria actualizada. Los nuevos registros de auditoría usarán esta zona.",
+        variant: "default",
+      });
+    } catch {
+      toast({
+        title: "Error",
+        description: "No se pudo actualizar la zona horaria.",
+        variant: "destructive",
+      });
+    } finally {
+      setSavingTimezone(false);
+    }
+  }
+
+  async function onSaveCurrency(value: string) {
+    setSavingCurrency(true);
+    try {
+      const res = await fetch(`${API_BASE}/system-settings/${SYSTEM_CURRENCY_KEY}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ companyId, value }),
+        credentials: "include",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || "Error al guardar");
+      setSystemCurrency(value);
+      router.refresh();
+      toast({
+        title: "Éxito",
+        description: "Moneda principal actualizada. Los precios y totales usarán este formato.",
+        variant: "default",
+      });
+    } catch {
+      toast({
+        title: "Error",
+        description: "No se pudo actualizar la moneda.",
+        variant: "destructive",
+      });
+    } finally {
+      setSavingCurrency(false);
+    }
+  }
 
   const {
     register: registerRules,
@@ -253,6 +382,26 @@ export default function GeneralSettingsPage({
     }
   }
 
+  const isAdminOrOwner = userRole === "admin" || userRole === "owner";
+
+  if (userRole === null) {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-2xl font-bold">Configuración General</h1>
+        <Card><CardContent className="pt-6">Cargando...</CardContent></Card>
+      </div>
+    );
+  }
+
+  if (!isAdminOrOwner) {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-2xl font-bold">Configuración General</h1>
+        <Card><CardContent className="pt-6">Redirigiendo...</CardContent></Card>
+      </div>
+    );
+  }
+
   if (loadingCompany) {
     return (
       <div className="space-y-6">
@@ -267,9 +416,90 @@ export default function GeneralSettingsPage({
       <div>
         <h1 className="text-2xl font-bold">Configuración General</h1>
         <p className="text-slate-500 text-sm mt-1">
-          Reglas del negocio e impuestos (IVA) de la empresa.
+          Reglas del negocio, zona horaria del sistema e impuestos (IVA) de la empresa.
         </p>
       </div>
+
+      {/* Section: System Settings (timezone + currency, solo admin/owner) */}
+      {isAdminOrOwner && (
+        <>
+          <Card>
+            <CardHeader>
+              <CardTitle>Zona Horaria del Sistema</CardTitle>
+              <CardDescription>
+                Define la zona horaria para los registros de auditoría y fechas del sistema. Los cambios aplican a los nuevos registros sin reiniciar el servidor.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-wrap items-end gap-4 max-w-md">
+                <div className="grid gap-2 flex-1 min-w-[200px]">
+                  <Label htmlFor="system-timezone">Zona horaria</Label>
+                  <Select
+                    value={systemTimezone}
+                    onValueChange={(v) => setSystemTimezone(v)}
+                    disabled={loadingTimezone}
+                  >
+                    <SelectTrigger id="system-timezone">
+                      <SelectValue placeholder="Seleccione zona horaria" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {TIMEZONE_OPTIONS.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button
+                  onClick={() => onSaveTimezone(systemTimezone)}
+                  disabled={loadingTimezone || savingTimezone}
+                >
+                  {savingTimezone ? "Guardando…" : "Guardar zona horaria"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Moneda Principal</CardTitle>
+              <CardDescription>
+                Define la moneda para precios, totales y facturación. El formato (símbolo, decimales) se aplicará en toda la aplicación.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-wrap items-end gap-4 max-w-md">
+                <div className="grid gap-2 flex-1 min-w-[200px]">
+                  <Label htmlFor="system-currency">Moneda</Label>
+                  <Select
+                    value={systemCurrency}
+                    onValueChange={(v) => setSystemCurrency(v)}
+                    disabled={loadingCurrency}
+                  >
+                    <SelectTrigger id="system-currency">
+                      <SelectValue placeholder="Seleccione moneda" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CURRENCY_OPTIONS.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button
+                  onClick={() => onSaveCurrency(systemCurrency)}
+                  disabled={loadingCurrency || savingCurrency}
+                >
+                  {savingCurrency ? "Guardando…" : "Guardar moneda"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </>
+      )}
 
       {/* Section A: Company Rules */}
       <Card>

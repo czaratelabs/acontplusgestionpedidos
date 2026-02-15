@@ -10,6 +10,7 @@ import {
 import { Establishment } from '../../establishments/entities/establishment.entity';
 import { Tax } from '../../taxes/entities/tax.entity';
 import { Contact } from '../../contacts/entities/contact.entity';
+import { SystemSetting } from '../../system-settings/entities/system-setting.entity';
 
 @Entity('companies')
 export class Company {
@@ -57,4 +58,7 @@ export class Company {
 
   @OneToMany(() => Contact, (contact) => contact.company)
   contacts: Contact[];
+
+  @OneToMany(() => SystemSetting, (setting) => setting.company)
+  settings: SystemSetting[];
 }
