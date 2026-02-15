@@ -241,6 +241,7 @@ export function ContactDialog({
   });
 
   const sriDocumentTypeCode = watch("sriDocumentTypeCode");
+  const sriPersonType = watch("sriPersonType");
   const { ref: taxIdRefRHF, ...taxIdRegisterRest } = register("taxId");
 
   useEffect(() => {
@@ -373,6 +374,8 @@ export function ContactDialog({
   /** Tipo persona bloqueado: Cédula, Consumidor Final y Empleados solo permiten Persona Natural. */
   const isPersonTypeLocked =
     sriDocumentTypeCode === "C" || sriDocumentTypeCode === "F" || isEmployee;
+  /** Bloqueo estricto: Sociedad no puede ser Empleado. */
+  const isInvalidEmployee = type === "employee" && (sriPersonType ?? "01") === "02";
 
   const handleTaxIdInput = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -799,6 +802,12 @@ export function ContactDialog({
           )}
           </div>
 
+          {isInvalidEmployee && (
+            <p className="text-destructive text-sm font-medium px-1" role="alert">
+              Error: Una Sociedad no puede ser registrada como Empleado. Seleccione Persona Natural.
+            </p>
+          )}
+
           <DialogFooter className="pt-4 pb-0">
             <Button
               type="button"
@@ -810,7 +819,7 @@ export function ContactDialog({
             </Button>
             <Button
               type="submit"
-              disabled={loading || consumidorFinalAlreadyExists}
+              disabled={loading || consumidorFinalAlreadyExists || isInvalidEmployee}
             >
               {loading
                 ? "Guardando…"
