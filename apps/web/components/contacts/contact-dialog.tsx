@@ -30,30 +30,32 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
 export const CONSUMIDOR_FINAL_TAX_ID = "9999999999999";
 
-export const DOCUMENT_TYPES = [
-  "CEDULA",
-  "RUC",
-  "PASSPORT",
-  "CONSUMIDOR_FINAL",
+/** SRI document type codes with user-friendly labels. */
+export const SRI_DOCUMENT_TYPE_OPTIONS = [
+  { value: "C", label: "Cédula" },
+  { value: "R", label: "RUC" },
+  { value: "P", label: "Pasaporte" },
+  { value: "F", label: "Consumidor Final" },
 ] as const;
-export type DocumentType = (typeof DOCUMENT_TYPES)[number];
 
-/** Consumidor Final solo disponible para Clientes (oculto en Proveedores). */
-export const DOCUMENT_TYPES_FOR_CLIENT = DOCUMENT_TYPES;
-export const DOCUMENT_TYPES_FOR_SUPPLIER = DOCUMENT_TYPES.filter(
-  (d) => d !== "CONSUMIDOR_FINAL"
-);
+export const SRI_DOCUMENT_TYPE_CODES = ["C", "R", "P", "F"] as const;
+export type SriDocumentTypeCode = (typeof SRI_DOCUMENT_TYPE_CODES)[number];
 
-export const SRI_PERSON_TYPES = [
-  { value: "01", label: "Persona natural (01)" },
-  { value: "02", label: "Sociedad (02)" },
+/** Proveedores no pueden ser Consumidor Final. */
+export const SRI_DOCUMENT_TYPE_OPTIONS_FOR_CLIENT = SRI_DOCUMENT_TYPE_OPTIONS;
+export const SRI_DOCUMENT_TYPE_OPTIONS_FOR_SUPPLIER =
+  SRI_DOCUMENT_TYPE_OPTIONS.filter((d) => d.value !== "F");
+
+export const SRI_PERSON_TYPE_OPTIONS = [
+  { value: "01", label: "Persona Natural" },
+  { value: "02", label: "Sociedad" },
 ] as const;
-export type SriPersonType = (typeof SRI_PERSON_TYPES)[number]["value"];
+export type SriPersonType = (typeof SRI_PERSON_TYPE_OPTIONS)[number]["value"];
 
 const formSchema = z
   .object({
-    documentType: z.enum(DOCUMENT_TYPES),
-    sriPersonType: z.enum(["01", "02"]).optional(),
+    sriDocumentTypeCode: z.enum(["C", "R", "P", "F"]),
+    sriPersonType: z.enum(["01", "02"]),
     name: z.string().min(1, "El nombre es obligatorio"),
     tradeName: z.string().optional(),
     taxId: z.string().min(1, "Número de identificación es obligatorio"),
@@ -62,7 +64,7 @@ const formSchema = z
     address: z.string().optional(),
   })
   .superRefine((data, ctx) => {
-    const isConsumidorFinal = data.documentType === "CONSUMIDOR_FINAL";
+    const isConsumidorFinal = data.sriDocumentTypeCode === "F";
     if (isConsumidorFinal) {
       if ((data.taxId ?? "").trim() !== CONSUMIDOR_FINAL_TAX_ID) {
         ctx.addIssue({
@@ -85,9 +87,9 @@ const formSchema = z
     }
     const t = (data.taxId ?? "").trim();
     if (!t) return;
-    switch (data.documentType) {
-      case "CEDULA":
-        if (!/^\d{10}$/.test(t)) {
+    switch (data.sriDocumentTypeCode) {
+      case "C":
+        if (t.length !== 10 || !/^\d{10}$/.test(t)) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
             message: "La cédula debe tener exactamente 10 dígitos",
@@ -95,16 +97,16 @@ const formSchema = z
           });
         }
         break;
-      case "RUC":
-        if (!/^\d{10}$/.test(t)) {
+      case "R":
+        if (t.length !== 10 || !/^\d{10}$/.test(t)) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
-            message: "El RUC debe tener 10 dígitos (el sistema agrega 001)",
+            message: "El RUC debe tener exactamente 10 dígitos (se añade 001 al guardar)",
             path: ["taxId"],
           });
         }
         break;
-      case "PASSPORT":
+      case "P":
         if (!/^[A-Za-z0-9]+$/.test(t) || t.length > 20) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
@@ -122,7 +124,7 @@ export type ContactForDialog = {
   id: string;
   name: string;
   tradeName: string | null;
-  documentType?: DocumentType;
+  sriDocumentTypeCode?: string;
   sriPersonType?: string;
   taxId: string;
   email: string | null;
@@ -167,6 +169,11 @@ export function ContactDialog({
   const isEditing = Boolean(initialData);
   const taxIdInputRef = useRef<HTMLInputElement>(null);
 
+  const documentTypeOptions =
+    type === "client"
+      ? SRI_DOCUMENT_TYPE_OPTIONS_FOR_CLIENT
+      : SRI_DOCUMENT_TYPE_OPTIONS_FOR_SUPPLIER;
+
   const {
     register,
     handleSubmit,
@@ -178,7 +185,7 @@ export function ContactDialog({
   } = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      documentType: "RUC",
+      sriDocumentTypeCode: "R",
       sriPersonType: "01",
       name: "",
       tradeName: "",
@@ -189,22 +196,30 @@ export function ContactDialog({
     },
   });
 
-  const documentType = watch("documentType");
+  const sriDocumentTypeCode = watch("sriDocumentTypeCode");
   const { ref: taxIdRefRHF, ...taxIdRegisterRest } = register("taxId");
-
-  const documentTypesOptions =
-    type === "client" ? DOCUMENT_TYPES_FOR_CLIENT : DOCUMENT_TYPES_FOR_SUPPLIER;
 
   useEffect(() => {
     if (open && initialData) {
       setResolvedContact(null);
       setConsumidorFinalAlreadyExists(false);
+      const docCode = initialData.sriDocumentTypeCode ?? "R";
+      const validCode = documentTypeOptions.some((o) => o.value === docCode)
+        ? docCode
+        : "R";
+      const rawTaxId = initialData.taxId ?? "";
+      const taxIdForInput =
+        validCode === "R" && /^\d{13}$/.test(rawTaxId) && rawTaxId.endsWith("001")
+          ? rawTaxId.slice(0, 10)
+          : rawTaxId;
+      const personType =
+        validCode === "C" ? "01" : (initialData.sriPersonType ?? "01");
       reset({
-        documentType: (initialData.documentType as DocumentType) ?? "RUC",
-        sriPersonType: initialData.sriPersonType ?? "01",
+        sriDocumentTypeCode: validCode,
+        sriPersonType: personType,
         name: initialData.name ?? "",
         tradeName: initialData.tradeName ?? "",
-        taxId: initialData.taxId ?? "",
+        taxId: taxIdForInput,
         email: initialData.email ?? "",
         phone: initialData.phone ?? "",
         address: initialData.address ?? "",
@@ -213,7 +228,7 @@ export function ContactDialog({
       setResolvedContact(null);
       setConsumidorFinalAlreadyExists(false);
       reset({
-        documentType: "RUC",
+        sriDocumentTypeCode: "R",
         sriPersonType: "01",
         name: "",
         tradeName: "",
@@ -223,18 +238,19 @@ export function ContactDialog({
         address: "",
       });
     }
-  }, [open, initialData, reset, type]);
+  }, [open, initialData, reset, documentTypeOptions]);
 
-  // Consumidor Final (solo clientes): auto-fill, lock; verificar si ya existe en BD
+  // Consumidor Final (solo clientes): auto-fill, lock, set sriPersonType to '01'
   useEffect(() => {
     if (!open) return;
-    if (documentType === "CONSUMIDOR_FINAL" && type === "client") {
+    if (sriDocumentTypeCode === "F" && type === "client") {
       setValue("taxId", CONSUMIDOR_FINAL_TAX_ID, { shouldValidate: true });
       setValue("name", "CONSUMIDOR FINAL", { shouldValidate: true });
       setValue("address", "S/N", { shouldValidate: true });
       setValue("tradeName", "", { shouldValidate: true });
       setValue("email", "", { shouldValidate: true });
       setValue("phone", "", { shouldValidate: true });
+      setValue("sriPersonType", "01", { shouldValidate: true });
     } else {
       const currentTaxId = getValues("taxId");
       const currentName = getValues("name");
@@ -252,23 +268,36 @@ export function ContactDialog({
         setValue("phone", "");
       }
     }
-  }, [documentType, open, setValue, getValues, type]);
+  }, [sriDocumentTypeCode, open, setValue, getValues, type]);
 
-  // Al cambiar de RUC a CEDULA: quitar sufijo 001 para dejar 10 dígitos
+  // Al cambiar de RUC a Cédula: quitar sufijo 001 para dejar 10 dígitos
   useEffect(() => {
-    if (!open || documentType !== "CEDULA") return;
+    if (!open || sriDocumentTypeCode !== "C") return;
     const taxId = getValues("taxId")?.trim();
     if (/^\d{13}$/.test(taxId) && taxId.endsWith("001")) {
       setValue("taxId", taxId.slice(0, 10), { shouldValidate: true });
     }
-  }, [documentType, open, getValues, setValue]);
+  }, [sriDocumentTypeCode, open, getValues, setValue]);
 
-  // Si es Consumidor Final (cliente), comprobar si ya existe en BD para bloquear Guardar
+  // Regla negocio: Cédula → solo Persona Natural; RUC → Persona Natural o Sociedad
+  useEffect(() => {
+    if (!open) return;
+    if (sriDocumentTypeCode === "C") {
+      setValue("sriPersonType", "01", { shouldValidate: true });
+    } else if (sriDocumentTypeCode === "R") {
+      const current = getValues("sriPersonType");
+      if (!current || (current !== "01" && current !== "02")) {
+        setValue("sriPersonType", "01", { shouldValidate: true });
+      }
+    }
+  }, [sriDocumentTypeCode, open, setValue, getValues]);
+
+  // Si es Consumidor Final (cliente), comprobar si ya existe en BD
   useEffect(() => {
     if (
       !open ||
       type !== "client" ||
-      documentType !== "CONSUMIDOR_FINAL" ||
+      sriDocumentTypeCode !== "F" ||
       initialData
     ) {
       setConsumidorFinalAlreadyExists(false);
@@ -290,29 +319,29 @@ export function ContactDialog({
     return () => {
       cancelled = true;
     };
-  }, [open, companyId, type, documentType, initialData]);
+  }, [open, companyId, type, sriDocumentTypeCode, initialData]);
 
-  const isConsumidorFinalLocked = documentType === "CONSUMIDOR_FINAL";
+  const isConsumidorFinalLocked = sriDocumentTypeCode === "F";
+  /** Tipo persona bloqueado: Cédula y Consumidor Final solo permiten Persona Natural. */
+  const isPersonTypeLocked = sriDocumentTypeCode === "C" || sriDocumentTypeCode === "F";
 
   const handleTaxIdInput = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const v = e.target.value;
-      if (documentType === "CEDULA" || documentType === "RUC") {
+      if (sriDocumentTypeCode === "C" || sriDocumentTypeCode === "R") {
         e.target.value = v.replace(/\D/g, "").slice(0, 10);
-      } else if (documentType === "PASSPORT") {
+      } else if (sriDocumentTypeCode === "P") {
         e.target.value = v.replace(/[^A-Za-z0-9]/g, "").slice(0, 20);
       }
       taxIdRegisterRest.onChange?.(e);
     },
-    [documentType, taxIdRegisterRest]
+    [sriDocumentTypeCode, taxIdRegisterRest]
   );
 
-  const handleTaxIdBlurLocal = useCallback(() => {
-    // RUC: ya no añadimos 001 en blur; solo 10 dígitos en pantalla, el backend añade 001 al guardar
-  }, []);
+  const handleTaxIdBlurLocal = useCallback(() => {}, []);
 
   const handleTaxIdBlur = useCallback(async () => {
-    if (isEditing || resolvedContact || documentType === "CONSUMIDOR_FINAL")
+    if (isEditing || resolvedContact || sriDocumentTypeCode === "F")
       return;
     const taxId = getValues("taxId")?.trim();
     if (!taxId || taxId.length < 10) return;
@@ -325,10 +354,18 @@ export function ContactDialog({
       if (res.ok) {
         const contact = (await res.json()) as ContactForDialog;
         setResolvedContact(contact);
-        setValue("documentType", (contact.documentType as DocumentType) ?? "RUC");
+        setValue("sriDocumentTypeCode", (contact.sriDocumentTypeCode ?? "R") as SriDocumentTypeCode);
+        setValue("sriPersonType", contact.sriPersonType ?? "01");
         setValue("name", contact.name ?? "");
         setValue("tradeName", contact.tradeName ?? "");
-        setValue("taxId", contact.taxId ?? "");
+        const rawTaxId = contact.taxId ?? "";
+        const taxIdForInput =
+          (contact.sriDocumentTypeCode ?? "R") === "R" &&
+          /^\d{13}$/.test(rawTaxId) &&
+          rawTaxId.endsWith("001")
+            ? rawTaxId.slice(0, 10)
+            : rawTaxId;
+        setValue("taxId", taxIdForInput);
         setValue("email", contact.email ?? "");
         setValue("phone", contact.phone ?? "");
         setValue("address", contact.address ?? "");
@@ -345,7 +382,7 @@ export function ContactDialog({
     }
   }, [
     companyId,
-    documentType,
+    sriDocumentTypeCode,
     getValues,
     isEditing,
     resolvedContact,
@@ -354,7 +391,6 @@ export function ContactDialog({
     type,
   ]);
 
-  // Focus RUC/CI field when opening "New" dialog (first interaction point for autocomplete)
   useEffect(() => {
     if (open && !initialData && taxIdInputRef.current) {
       const t = setTimeout(() => taxIdInputRef.current?.focus(), 80);
@@ -366,12 +402,13 @@ export function ContactDialog({
     setLoading(true);
     try {
       let taxId = values.taxId.trim();
-      if (values.documentType === "RUC" && /^\d{10}$/.test(taxId)) {
+      if (values.sriDocumentTypeCode === "R" && /^\d{10}$/.test(taxId)) {
         taxId = taxId + "001";
       }
       const payload = {
-        documentType: values.documentType,
-        sriPersonType: values.sriPersonType ?? "01",
+        sriDocumentTypeCode: values.sriDocumentTypeCode,
+        sriPersonType:
+          values.sriDocumentTypeCode === "C" ? "01" : values.sriPersonType,
         name: values.name.trim(),
         tradeName: values.tradeName?.trim() || undefined,
         taxId,
@@ -436,6 +473,10 @@ export function ContactDialog({
         ? "Editar Proveedor"
         : "Nuevo Proveedor";
 
+  const selectedDocCode = documentTypeOptions.some((o) => o.value === sriDocumentTypeCode)
+    ? sriDocumentTypeCode
+    : "R";
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent className="sm:max-w-[480px]">
@@ -449,43 +490,20 @@ export function ContactDialog({
         </DialogHeader>
 
         <form onSubmit={handleSubmit(onSubmit)} className="grid gap-4 py-4">
-          {/* 1. Document Type — first field */}
+          {/* 1. Tipo de documento */}
           <div className="grid gap-2">
-            <Label htmlFor="documentType" className="font-medium text-slate-900">
+            <Label htmlFor="sriDocumentTypeCode" className="font-medium text-slate-900">
               Tipo de documento *
             </Label>
             <Select
-              value={documentTypesOptions.includes(documentType) ? documentType : "RUC"}
-              onValueChange={(v) => setValue("documentType", v as DocumentType)}
+              value={selectedDocCode}
+              onValueChange={(v) => setValue("sriDocumentTypeCode", v as SriDocumentTypeCode)}
             >
-              <SelectTrigger id="documentType">
+              <SelectTrigger id="sriDocumentTypeCode">
                 <SelectValue placeholder="Seleccione tipo" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="CEDULA">Cédula</SelectItem>
-                <SelectItem value="RUC">RUC</SelectItem>
-                <SelectItem value="PASSPORT">Pasaporte</SelectItem>
-                {type === "client" && (
-                  <SelectItem value="CONSUMIDOR_FINAL">Consumidor Final</SelectItem>
-                )}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Tipo de persona SRI (01 = Persona natural, 02 = Sociedad) */}
-          <div className="grid gap-2">
-            <Label htmlFor="sriPersonType" className="font-medium text-slate-900">
-              Tipo de persona SRI
-            </Label>
-            <Select
-              value={watch("sriPersonType") ?? "01"}
-              onValueChange={(v) => setValue("sriPersonType", v as SriPersonType)}
-            >
-              <SelectTrigger id="sriPersonType">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {SRI_PERSON_TYPES.map(({ value, label }) => (
+                {documentTypeOptions.map(({ value, label }) => (
                   <SelectItem key={value} value={value}>
                     {label}
                   </SelectItem>
@@ -494,7 +512,35 @@ export function ContactDialog({
             </Select>
           </div>
 
-          {/* 2. Tax ID / Identification Number */}
+          {/* 2. Tipo de persona (antes del RUC/CI) */}
+          <div className="grid gap-2">
+            <Label htmlFor="sriPersonType" className="font-medium text-slate-900">
+              Tipo de persona *
+            </Label>
+            <Select
+              value={watch("sriPersonType") ?? "01"}
+              onValueChange={(v) => setValue("sriPersonType", v as SriPersonType)}
+              disabled={isPersonTypeLocked}
+            >
+              <SelectTrigger id="sriPersonType">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {SRI_PERSON_TYPE_OPTIONS.map(({ value, label }) => (
+                  <SelectItem key={value} value={value}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {sriDocumentTypeCode === "C" && (
+              <p className="text-xs text-slate-500" role="status">
+                Con Cédula solo se permite Persona Natural.
+              </p>
+            )}
+          </div>
+
+          {/* 3. Número de identificación */}
           <div className="grid gap-2">
             <Label htmlFor="taxId" className="font-medium text-slate-900">
               Número de identificación *
@@ -507,14 +553,18 @@ export function ContactDialog({
                   taxIdInputRef.current = el;
                 }}
                 placeholder={
-                  documentType === "CEDULA" || documentType === "RUC"
-                    ? "10 dígitos (RUC: se añade 001 al guardar)"
+                  sriDocumentTypeCode === "C" || sriDocumentTypeCode === "R"
+                    ? "Solo 10 dígitos (RUC: se añade 001 al guardar)"
                     : "Alfanumérico, máx. 20"
                 }
                 className="font-mono pr-9"
-                inputMode={documentType === "PASSPORT" ? "text" : "numeric"}
+                inputMode={sriDocumentTypeCode === "P" ? "text" : "numeric"}
                 maxLength={
-                  documentType === "CEDULA" || documentType === "RUC" ? 10 : 20
+                  sriDocumentTypeCode === "F"
+                    ? 13
+                    : sriDocumentTypeCode === "C" || sriDocumentTypeCode === "R"
+                      ? 10
+                      : 20
                 }
                 aria-describedby={errors.taxId ? "taxId-error" : undefined}
                 disabled={!!resolvedContact || isConsumidorFinalLocked}
@@ -549,7 +599,7 @@ export function ContactDialog({
             )}
           </div>
 
-          {/* 2. Name (Razón Social) */}
+          {/* 4. Razón social */}
           <div className="grid gap-2">
             <Label htmlFor="name">Razón social *</Label>
             <Input
@@ -564,7 +614,7 @@ export function ContactDialog({
             )}
           </div>
 
-          {/* 3. Trade Name (optional) */}
+          {/* 5. Nombre comercial */}
           <div className="grid gap-2">
             <Label htmlFor="tradeName">Nombre comercial (opcional)</Label>
             <Input
@@ -576,7 +626,7 @@ export function ContactDialog({
             />
           </div>
 
-          {/* 4. Email & Phone */}
+          {/* 6. Email & Teléfono */}
           <div className="grid grid-cols-2 gap-4">
             <div className="grid gap-2">
               <Label htmlFor="email">Email</Label>
@@ -604,7 +654,7 @@ export function ContactDialog({
             </div>
           </div>
 
-          {/* 5. Address */}
+          {/* 7. Dirección */}
           <div className="grid gap-2">
             <Label htmlFor="address">Dirección</Label>
             <Input

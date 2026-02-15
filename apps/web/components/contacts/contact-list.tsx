@@ -20,7 +20,7 @@ export type ContactRow = {
   id: string;
   name: string;
   tradeName: string | null;
-  documentType?: string;
+  sriDocumentTypeCode?: string;
   sriPersonType?: string;
   taxId: string;
   email: string | null;
@@ -102,7 +102,7 @@ export function ContactList({ companyId, type }: ContactListProps) {
       id: contact.id,
       name: contact.name,
       tradeName: contact.tradeName,
-      documentType: contact.documentType as ContactForDialog["documentType"],
+      sriDocumentTypeCode: contact.sriDocumentTypeCode,
       sriPersonType: contact.sriPersonType,
       taxId: contact.taxId,
       email: contact.email,
@@ -187,23 +187,24 @@ export function ContactList({ companyId, type }: ContactListProps) {
         <Table>
           <TableHeader>
             <TableRow className="bg-slate-50">
-              <TableHead>Nombre</TableHead>
+              <TableHead>Razón social</TableHead>
               <TableHead>RUC / CI</TableHead>
               <TableHead>Email</TableHead>
               <TableHead>Teléfono</TableHead>
+              <TableHead>Dirección</TableHead>
               <TableHead className="text-right">Acciones</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={5} className="h-24 text-center text-slate-500">
+                <TableCell colSpan={6} className="h-24 text-center text-slate-500">
                   Cargando…
                 </TableCell>
               </TableRow>
             ) : contacts.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} className="h-24 text-center text-slate-500">
+                <TableCell colSpan={6} className="h-24 text-center text-slate-500">
                   No hay contactos. Usa &quot;{newButtonLabel}&quot; para agregar uno.
                 </TableCell>
               </TableRow>
@@ -211,7 +212,12 @@ export function ContactList({ companyId, type }: ContactListProps) {
               contacts.map((contact) => (
                 <TableRow key={contact.id}>
                   <TableCell className="font-medium">
-                    {contact.tradeName || contact.name}
+                    <div>{contact.name}</div>
+                    {contact.tradeName?.trim() ? (
+                      <div className="text-xs font-normal text-slate-500" title={contact.tradeName}>
+                        {contact.tradeName}
+                      </div>
+                    ) : null}
                   </TableCell>
                   <TableCell className="text-slate-600 font-mono text-sm">
                     {contact.taxId}
@@ -221,6 +227,11 @@ export function ContactList({ companyId, type }: ContactListProps) {
                   </TableCell>
                   <TableCell className="text-slate-500">
                     {contact.phone ?? "—"}
+                  </TableCell>
+                  <TableCell className="text-slate-600 text-sm max-w-[200px] truncate" title={typeof contact.address === "string" ? contact.address : undefined}>
+                    {typeof contact.address === "string" && contact.address.trim() !== ""
+                      ? contact.address
+                      : "—"}
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-1">

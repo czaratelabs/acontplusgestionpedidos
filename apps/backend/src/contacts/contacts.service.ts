@@ -10,11 +10,7 @@ import { Company } from '../companies/entities/company.entity';
 import { CreateContactDto } from './dto/create-contact.dto';
 import { UpdateContactDto } from './dto/update-contact.dto';
 import type { ContactTypeFilter } from './dto/search-contact.dto';
-import {
-  DocumentType,
-  CONSUMIDOR_FINAL_TAX_ID,
-  SRI_DOCUMENT_TYPE_CODE,
-} from './enums/document-type.enum';
+import { CONSUMIDOR_FINAL_TAX_ID } from './enums/document-type.enum';
 
 @Injectable()
 export class ContactsService {
@@ -26,17 +22,17 @@ export class ContactsService {
   ) {}
 
   /** Normalize RUC: 10 digits -> 13 with suffix '001'. Consumidor Final (9999999999999) is never changed. */
-  private normalizeTaxId(taxId: string, documentType: DocumentType): string {
+  private normalizeTaxId(taxId: string, sriDocumentTypeCode: string): string {
     const t = taxId.trim();
     if (t === CONSUMIDOR_FINAL_TAX_ID) return t;
-    if (documentType === DocumentType.RUC && /^\d{10}$/.test(t)) {
+    if (sriDocumentTypeCode === 'R' && /^\d{10}$/.test(t)) {
       return t + '001';
     }
     return t;
   }
 
   /**
-   * For Ecuador natural persons: CEDULA (10 digits) and RUC (13 = 10 + '001') refer to the same person.
+   * For Ecuador natural persons: Cédula (10 digits) and RUC (13 = 10 + '001') refer to the same person.
    * Returns [input, linked] for lookup/create to avoid duplicates.
    */
   private getTaxIdCandidates(taxId: string): string[] {
@@ -48,20 +44,17 @@ export class ContactsService {
   }
 
   /**
-   * Smart Create (Upsert-like). Supports Auto-Upgrade from CEDULA to RUC at POS:
-   * when the cashier enters a 13-digit RUC and the contact was registered with the 10-digit CEDULA,
+   * Smart Create (Upsert-like). Supports Auto-Upgrade from Cédula to RUC at POS:
+   * when the cashier enters a 13-digit RUC and the contact was registered with the 10-digit Cédula,
    * we upgrade the existing record instead of creating a duplicate — preserving sales history.
    *
-   * Search phase (for 13-digit RUC input):
-   * - Look for full 13-digit RUC OR 10-digit root (substring 0–10) in the same company.
-   * - If a CEDULA (10-digit) match is found → Auto-Upgrade that record to RUC and return it.
+   * Consumidor Final: sriDocumentTypeCode === 'F'.
    */
   async create(companyId: string, dto: CreateContactDto): Promise<Contact> {
     const company = await this.companyRepo.findOneBy({ id: companyId });
     if (!company) throw new NotFoundException('Empresa no encontrada');
 
-    const normalizedTaxId = this.normalizeTaxId(dto.taxId, dto.documentType);
-    // Search: 13-digit RUC → [RUC, CEDULA root]; 10-digit CEDULA → [CEDULA, RUC]; else exact
+    const normalizedTaxId = this.normalizeTaxId(dto.taxId, dto.sriDocumentTypeCode);
     const candidates = this.getTaxIdCandidates(normalizedTaxId);
     const existing = await this.contactRepo.findOne({
       where: candidates.map((taxId) => ({
@@ -73,7 +66,8 @@ export class ContactsService {
 
     if (existing) {
       if (normalizedTaxId === CONSUMIDOR_FINAL_TAX_ID) {
-        existing.sriDocumentTypeCode = SRI_DOCUMENT_TYPE_CODE[DocumentType.CONSUMIDOR_FINAL];
+        existing.sriDocumentTypeCode = 'F';
+        existing.sriPersonType = dto.sriPersonType;
         existing.isClient = existing.isClient || dto.isClient === true;
         existing.isSupplier = existing.isSupplier || dto.isSupplier === true;
         return this.contactRepo.save(existing);
@@ -82,19 +76,16 @@ export class ContactsService {
       const existingIsRuc = existing.taxId.length === 13;
       const incomingIsRuc = normalizedTaxId.length === 13;
 
-      // Incoming CEDULA (10) but existing has RUC (13): prefer existing, only update roles
       if (!incomingIsRuc && existingIsRuc) {
         existing.isClient = existing.isClient || dto.isClient === true;
         existing.isSupplier = existing.isSupplier || dto.isSupplier === true;
         return this.contactRepo.save(existing);
       }
 
-      // ——— Auto-Upgrade: CEDULA → RUC (e.g. POS sends RUC for a contact stored as CEDULA) ———
       if (incomingIsRuc && !existingIsRuc) {
         existing.taxId = normalizedTaxId;
-        existing.documentType = DocumentType.RUC;
-        existing.sriDocumentTypeCode = SRI_DOCUMENT_TYPE_CODE[DocumentType.RUC];
-        if (dto.sriPersonType !== undefined) existing.sriPersonType = dto.sriPersonType;
+        existing.sriDocumentTypeCode = 'R';
+        existing.sriPersonType = dto.sriPersonType;
         existing.name = dto.name;
         existing.tradeName = dto.tradeName?.trim() ?? existing.tradeName;
         existing.email = dto.email?.trim() ?? existing.email;
@@ -105,13 +96,11 @@ export class ContactsService {
         return this.contactRepo.save(existing);
       }
 
-      // Exact or same-length match: standard merge
       existing.name = dto.name;
       existing.tradeName = dto.tradeName?.trim() ?? existing.tradeName;
       existing.taxId = normalizedTaxId;
-      existing.documentType = dto.documentType;
-      existing.sriDocumentTypeCode = SRI_DOCUMENT_TYPE_CODE[dto.documentType];
-      if (dto.sriPersonType !== undefined) existing.sriPersonType = dto.sriPersonType;
+      existing.sriDocumentTypeCode = dto.sriDocumentTypeCode;
+      existing.sriPersonType = dto.sriPersonType;
       existing.email = dto.email?.trim() ?? existing.email;
       existing.phone = dto.phone?.trim() ?? existing.phone;
       existing.address = dto.address?.trim() ?? existing.address;
@@ -123,9 +112,8 @@ export class ContactsService {
     const contact = this.contactRepo.create({
       name: dto.name,
       tradeName: dto.tradeName?.trim() ?? null,
-      documentType: dto.documentType,
-      sriDocumentTypeCode: SRI_DOCUMENT_TYPE_CODE[dto.documentType],
-      sriPersonType: dto.sriPersonType ?? null,
+      sriDocumentTypeCode: dto.sriDocumentTypeCode,
+      sriPersonType: dto.sriPersonType,
       taxId: normalizedTaxId,
       email: dto.email?.trim() ?? null,
       phone: dto.phone?.trim() ?? null,
@@ -166,7 +154,6 @@ export class ContactsService {
       });
     }
 
-    // Search by name OR taxId (ILIKE); root ID check: 10/13 digit taxId also matches linked CEDULA/RUC
     const qb = this.contactRepo
       .createQueryBuilder('contact')
       .where('contact.companyId = :companyId', { companyId })
@@ -208,7 +195,6 @@ export class ContactsService {
 
   /**
    * Lookup contact by taxId within a company (for autocomplete / fusion).
-   * Root ID check: 10 digits (CEDULA) also matches RUC (10+001); 13 digits (RUC) also matches CEDULA (first 10).
    */
   async findByTaxId(
     companyId: string,
@@ -242,9 +228,9 @@ export class ContactsService {
     });
     if (!contact) throw new NotFoundException('Contacto no encontrado');
 
-    const docType = dto.documentType ?? contact.documentType;
+    const docCode = dto.sriDocumentTypeCode ?? contact.sriDocumentTypeCode;
     if (dto.taxId !== undefined) {
-      const normalized = this.normalizeTaxId(dto.taxId, docType);
+      const normalized = this.normalizeTaxId(dto.taxId, docCode);
       if (normalized !== contact.taxId) {
         const existing = await this.contactRepo.findOne({
           where: {
@@ -264,16 +250,13 @@ export class ContactsService {
     if (dto.name !== undefined) contact.name = dto.name;
     if (dto.tradeName !== undefined)
       contact.tradeName = dto.tradeName?.trim() ?? null;
-    if (dto.documentType !== undefined) {
-      contact.documentType = dto.documentType;
-      contact.sriDocumentTypeCode = SRI_DOCUMENT_TYPE_CODE[dto.documentType];
-    }
+    if (dto.sriDocumentTypeCode !== undefined)
+      contact.sriDocumentTypeCode = dto.sriDocumentTypeCode;
     if (dto.sriPersonType !== undefined) contact.sriPersonType = dto.sriPersonType;
     if (dto.email !== undefined) contact.email = dto.email?.trim() ?? null;
     if (dto.phone !== undefined) contact.phone = dto.phone?.trim() ?? null;
     if (dto.address !== undefined) contact.address = dto.address?.trim() ?? null;
 
-    // CRITICAL: Role preservation — never remove an existing role (e.g. fusion: add Provider to existing Client)
     if (dto.isClient !== undefined)
       contact.isClient = contact.isClient || dto.isClient;
     if (dto.isSupplier !== undefined)

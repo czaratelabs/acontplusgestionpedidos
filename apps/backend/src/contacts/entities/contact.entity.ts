@@ -7,7 +7,10 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { Company } from '../../companies/entities/company.entity';
-import { DocumentType } from '../enums/document-type.enum';
+
+/** SRI document type codes: C=Cédula, R=RUC, P=Pasaporte, F=Consumidor Final */
+export const SRI_DOCUMENT_TYPE_CODES = ['C', 'R', 'P', 'F'] as const;
+export type SriDocumentTypeCode = (typeof SRI_DOCUMENT_TYPE_CODES)[number];
 
 @Entity('contacts')
 export class Contact {
@@ -20,12 +23,13 @@ export class Contact {
   @Column({ type: 'varchar', nullable: true })
   tradeName: string | null;
 
-  @Column({
-    type: 'enum',
-    enum: DocumentType,
-    default: DocumentType.RUC,
-  })
-  documentType: DocumentType;
+  /** SRI document type: C=Cédula, R=RUC, P=Pasaporte, F=Consumidor Final */
+  @Column({ type: 'varchar', length: 1, default: 'R' })
+  sriDocumentTypeCode: string;
+
+  /** SRI tipo persona: 01=Persona natural, 02=Sociedad (nullable por datos existentes) */
+  @Column({ type: 'varchar', length: 2, default: '01', nullable: true })
+  sriPersonType: string | null;
 
   @Column({ type: 'varchar' })
   taxId: string;
@@ -45,14 +49,6 @@ export class Contact {
   @Column({ type: 'boolean', default: false })
   isSupplier: boolean;
 
-  /** SRI code for document type: C=Cédula, R=RUC, P=Pasaporte, F=Consumidor Final */
-  @Column({ type: 'varchar', length: 1, default: 'R' })
-  sriDocumentTypeCode: string;
-
-  /** SRI tipo persona: 01=Persona natural, 02=Sociedad */
-  @Column({ type: 'varchar', length: 2, nullable: true })
-  sriPersonType: string | null;
-
   @ManyToOne(() => Company, (company) => company.contacts)
   company: Company;
 
@@ -64,18 +60,18 @@ export class Contact {
 
   /**
    * SRI (Ecuador) document type code by role.
-   * CEDULA: 02 (supplier) / 05 (client)
-   * RUC: 01 (supplier) / 04 (client)
-   * PASSPORT: 03 (supplier) / 06 (client)
-   * CONSUMIDOR_FINAL: 07 (client)
+   * C (Cédula): 02 (supplier) / 05 (client)
+   * R (RUC): 01 (supplier) / 04 (client)
+   * P (Pasaporte): 03 (supplier) / 06 (client)
+   * F (Consumidor Final): 07 (client/supplier)
    */
   getSriCode(role: 'client' | 'supplier'): string {
-    const map: Record<DocumentType, { client: string; supplier: string }> = {
-      [DocumentType.CEDULA]: { client: '05', supplier: '02' },
-      [DocumentType.RUC]: { client: '04', supplier: '01' },
-      [DocumentType.PASSPORT]: { client: '06', supplier: '03' },
-      [DocumentType.CONSUMIDOR_FINAL]: { client: '07', supplier: '07' },
+    const map: Record<string, { client: string; supplier: string }> = {
+      C: { client: '05', supplier: '02' },
+      R: { client: '04', supplier: '01' },
+      P: { client: '06', supplier: '03' },
+      F: { client: '07', supplier: '07' },
     };
-    return map[this.documentType]?.[role] ?? '04';
+    return map[this.sriDocumentTypeCode]?.[role] ?? '04';
   }
 }

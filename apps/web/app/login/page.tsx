@@ -27,7 +27,8 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+// Usar proxy de Next.js para evitar CORS y "Failed to fetch"
+const LOGIN_URL = "/api/auth/login";
 
 // Esquema de validación (Reglas del juego)
 const formSchema = z.object({
@@ -64,10 +65,7 @@ export default function LoginPage() {
     setError("");
 
     try {
-      const loginUrl = `${API_BASE}/auth/login`;
-      console.log("🔗 Attempting Login to:", loginUrl);
-      console.log("🔗 NEXT_PUBLIC_API_URL:", process.env.NEXT_PUBLIC_API_URL ?? "(undefined, using fallback)");
-      const res = await fetch(loginUrl, {
+      const res = await fetch(LOGIN_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(values),
@@ -99,7 +97,7 @@ export default function LoginPage() {
       
     } catch (err: any) {
       console.error(err);
-      setError("Credenciales incorrectas o error de conexión");
+      setError(err?.message ?? "Credenciales incorrectas o error de conexión");
     } finally {
       setLoading(false);
     }
