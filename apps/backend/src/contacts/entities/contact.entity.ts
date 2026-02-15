@@ -49,6 +49,15 @@ export class Contact {
   @Column({ type: 'boolean', default: false })
   isSupplier: boolean;
 
+  @Column({ type: 'boolean', default: false })
+  isEmployee: boolean;
+
+  @Column({ type: 'varchar', nullable: true })
+  jobTitle: string | null;
+
+  @Column({ type: 'decimal', precision: 14, scale: 2, nullable: true })
+  salary: string | null;
+
   @ManyToOne(() => Company, (company) => company.contacts)
   company: Company;
 

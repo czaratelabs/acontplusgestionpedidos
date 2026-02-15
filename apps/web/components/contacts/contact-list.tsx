@@ -28,11 +28,14 @@ export type ContactRow = {
   address: string | null;
   isClient: boolean;
   isSupplier: boolean;
+  isEmployee?: boolean;
+  jobTitle?: string | null;
+  salary?: string | null;
 };
 
 type ContactListProps = {
   companyId: string;
-  type: "client" | "supplier";
+  type: "client" | "supplier" | "employee";
 };
 
 export function ContactList({ companyId, type }: ContactListProps) {
@@ -110,6 +113,9 @@ export function ContactList({ companyId, type }: ContactListProps) {
       address: contact.address,
       isClient: contact.isClient,
       isSupplier: contact.isSupplier,
+      isEmployee: contact.isEmployee,
+      jobTitle: contact.jobTitle,
+      salary: contact.salary,
     });
     setDialogOpen(true);
   }
@@ -151,19 +157,24 @@ export function ContactList({ companyId, type }: ContactListProps) {
     }
   }
 
-  const newButtonLabel = type === "client" ? "Nuevo Cliente" : "Nuevo Proveedor";
+  const newButtonLabel =
+    type === "client" ? "Nuevo Cliente" : type === "supplier" ? "Nuevo Proveedor" : "Nuevo Empleado";
+
+  const isEmployee = type === "employee";
 
   return (
     <>
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-slate-900">
-            {type === "client" ? "Clientes" : "Proveedores"}
+            {type === "client" ? "Clientes" : type === "supplier" ? "Proveedores" : "Empleados"}
           </h1>
           <p className="text-slate-500">
             {type === "client"
               ? "Gestiona tu directorio de clientes."
-              : "Gestiona tu directorio de proveedores."}
+              : type === "supplier"
+                ? "Gestiona tu directorio de proveedores."
+                : "Gestiona el directorio de empleados."}
           </p>
         </div>
         <Button
@@ -187,8 +198,9 @@ export function ContactList({ companyId, type }: ContactListProps) {
         <Table>
           <TableHeader>
             <TableRow className="bg-slate-50">
-              <TableHead>Razón social</TableHead>
+              <TableHead>{isEmployee ? "Nombre" : "Razón social"}</TableHead>
               <TableHead>RUC / CI</TableHead>
+              {isEmployee && <TableHead>Cargo</TableHead>}
               <TableHead>Email</TableHead>
               <TableHead>Teléfono</TableHead>
               <TableHead>Dirección</TableHead>
@@ -198,13 +210,13 @@ export function ContactList({ companyId, type }: ContactListProps) {
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={6} className="h-24 text-center text-slate-500">
+                <TableCell colSpan={isEmployee ? 7 : 6} className="h-24 text-center text-slate-500">
                   Cargando…
                 </TableCell>
               </TableRow>
             ) : contacts.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="h-24 text-center text-slate-500">
+                <TableCell colSpan={isEmployee ? 7 : 6} className="h-24 text-center text-slate-500">
                   No hay contactos. Usa &quot;{newButtonLabel}&quot; para agregar uno.
                 </TableCell>
               </TableRow>
@@ -213,7 +225,7 @@ export function ContactList({ companyId, type }: ContactListProps) {
                 <TableRow key={contact.id}>
                   <TableCell className="font-medium">
                     <div>{contact.name}</div>
-                    {contact.tradeName?.trim() ? (
+                    {!isEmployee && contact.tradeName?.trim() ? (
                       <div className="text-xs font-normal text-slate-500" title={contact.tradeName}>
                         {contact.tradeName}
                       </div>
@@ -222,6 +234,11 @@ export function ContactList({ companyId, type }: ContactListProps) {
                   <TableCell className="text-slate-600 font-mono text-sm">
                     {contact.taxId}
                   </TableCell>
+                  {isEmployee && (
+                    <TableCell className="text-slate-600 text-sm">
+                      {contact.jobTitle?.trim() ? contact.jobTitle : "—"}
+                    </TableCell>
+                  )}
                   <TableCell className="text-slate-500">
                     {contact.email ?? "—"}
                   </TableCell>

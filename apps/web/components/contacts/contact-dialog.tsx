@@ -52,73 +52,113 @@ export const SRI_PERSON_TYPE_OPTIONS = [
 ] as const;
 export type SriPersonType = (typeof SRI_PERSON_TYPE_OPTIONS)[number]["value"];
 
-const formSchema = z
-  .object({
-    sriDocumentTypeCode: z.enum(["C", "R", "P", "F"]),
-    sriPersonType: z.enum(["01", "02"]),
-    name: z.string().min(1, "El nombre es obligatorio"),
-    tradeName: z.string().optional(),
-    taxId: z.string().min(1, "Número de identificación es obligatorio"),
-    email: z.string().optional(),
-    phone: z.string().optional(),
-    address: z.string().optional(),
-  })
-  .superRefine((data, ctx) => {
-    const isConsumidorFinal = data.sriDocumentTypeCode === "F";
-    if (isConsumidorFinal) {
-      if ((data.taxId ?? "").trim() !== CONSUMIDOR_FINAL_TAX_ID) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "Consumidor Final debe usar el RUC 9999999999999",
-          path: ["taxId"],
-        });
-      }
-      return;
-    }
-    if (data.email && data.email.trim() !== "") {
-      const ok = z.string().email().safeParse(data.email).success;
-      if (!ok) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "Correo inválido",
-          path: ["email"],
-        });
-      }
-    }
-    const t = (data.taxId ?? "").trim();
-    if (!t) return;
-    switch (data.sriDocumentTypeCode) {
-      case "C":
-        if (t.length !== 10 || !/^\d{10}$/.test(t)) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: "La cédula debe tener exactamente 10 dígitos",
-            path: ["taxId"],
-          });
-        }
-        break;
-      case "R":
-        if (t.length !== 10 || !/^\d{10}$/.test(t)) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: "El RUC debe tener exactamente 10 dígitos (se añade 001 al guardar)",
-            path: ["taxId"],
-          });
-        }
-        break;
-      case "P":
-        if (!/^[A-Za-z0-9]+$/.test(t) || t.length > 20) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: "El pasaporte debe ser alfanumérico (máx. 20 caracteres)",
-            path: ["taxId"],
-          });
-        }
-        break;
-    }
-  });
+/** Cargos estándar para empleados (dropdown). */
+export const JOB_TITLES = [
+  "Gerente",
+  "Administrador",
+  "Contador",
+  "Vendedor",
+  "Cajero",
+  "Bodeguero",
+  "Chofer",
+  "Asistente",
+  "Soporte Técnico",
+  "Otro",
+] as const;
 
-type FormValues = z.infer<typeof formSchema>;
+type ContactType = "client" | "supplier" | "employee";
+
+function getFormSchema(contactType: ContactType) {
+  return z
+    .object({
+      sriDocumentTypeCode: z.enum(["C", "R", "P", "F"]),
+      sriPersonType: z.enum(["01", "02"]),
+      name: z.string().min(1, "El nombre es obligatorio"),
+      tradeName: z.string().optional(),
+      taxId: z.string().min(1, "Número de identificación es obligatorio"),
+      email: z.string().optional(),
+      phone: z.string().optional(),
+      address: z.string().optional(),
+      jobTitle: z.string().optional(),
+      salary: z.union([z.string(), z.number()]).optional(),
+    })
+    .superRefine((data, ctx) => {
+      if (contactType === "employee") {
+        if (!(data.jobTitle ?? "").trim()) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "El cargo es obligatorio para empleados",
+            path: ["jobTitle"],
+          });
+        }
+        const sal = data.salary;
+        if (sal !== undefined && sal !== null && sal !== "") {
+          const num = typeof sal === "number" ? sal : Number(String(sal).trim());
+          if (Number.isNaN(num) || num < 0) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "El salario debe ser un número positivo",
+              path: ["salary"],
+            });
+          }
+        }
+      }
+      const isConsumidorFinal = data.sriDocumentTypeCode === "F";
+      if (isConsumidorFinal) {
+        if ((data.taxId ?? "").trim() !== CONSUMIDOR_FINAL_TAX_ID) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Consumidor Final debe usar el RUC 9999999999999",
+            path: ["taxId"],
+          });
+        }
+        return;
+      }
+      if (data.email && data.email.trim() !== "") {
+        const ok = z.string().email().safeParse(data.email).success;
+        if (!ok) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Correo inválido",
+            path: ["email"],
+          });
+        }
+      }
+      const t = (data.taxId ?? "").trim();
+      if (!t) return;
+      switch (data.sriDocumentTypeCode) {
+        case "C":
+          if (t.length !== 10 || !/^\d{10}$/.test(t)) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "La cédula debe tener exactamente 10 dígitos",
+              path: ["taxId"],
+            });
+          }
+          break;
+        case "R":
+          if (t.length !== 10 || !/^\d{10}$/.test(t)) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "El RUC debe tener exactamente 10 dígitos (se añade 001 al guardar)",
+              path: ["taxId"],
+            });
+          }
+          break;
+        case "P":
+          if (!/^[A-Za-z0-9]+$/.test(t) || t.length > 20) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "El pasaporte debe ser alfanumérico (máx. 20 caracteres)",
+              path: ["taxId"],
+            });
+          }
+          break;
+      }
+    });
+}
+
+type FormValues = z.infer<ReturnType<typeof getFormSchema>>;
 
 export type ContactForDialog = {
   id: string;
@@ -132,9 +172,10 @@ export type ContactForDialog = {
   address: string | null;
   isClient: boolean;
   isSupplier: boolean;
+  isEmployee?: boolean;
+  jobTitle?: string | null;
+  salary?: string | null;
 };
-
-type ContactType = "client" | "supplier";
 
 type ContactDialogProps = {
   companyId: string;
@@ -169,6 +210,7 @@ export function ContactDialog({
   const isEditing = Boolean(initialData);
   const taxIdInputRef = useRef<HTMLInputElement>(null);
 
+  const isEmployee = type === "employee";
   const documentTypeOptions =
     type === "client"
       ? SRI_DOCUMENT_TYPE_OPTIONS_FOR_CLIENT
@@ -183,7 +225,7 @@ export function ContactDialog({
     watch,
     formState: { errors },
   } = useForm<FormValues>({
-    resolver: zodResolver(formSchema),
+    resolver: zodResolver(getFormSchema(type)),
     defaultValues: {
       sriDocumentTypeCode: "R",
       sriPersonType: "01",
@@ -193,6 +235,8 @@ export function ContactDialog({
       email: "",
       phone: "",
       address: "",
+      jobTitle: "",
+      salary: "",
     },
   });
 
@@ -213,7 +257,7 @@ export function ContactDialog({
           ? rawTaxId.slice(0, 10)
           : rawTaxId;
       const personType =
-        validCode === "C" ? "01" : (initialData.sriPersonType ?? "01");
+        validCode === "C" || isEmployee ? "01" : (initialData.sriPersonType ?? "01");
       reset({
         sriDocumentTypeCode: validCode,
         sriPersonType: personType,
@@ -223,6 +267,8 @@ export function ContactDialog({
         email: initialData.email ?? "",
         phone: initialData.phone ?? "",
         address: initialData.address ?? "",
+        jobTitle: initialData.jobTitle ?? "",
+        salary: initialData.salary ?? "",
       });
     } else if (open && !initialData) {
       setResolvedContact(null);
@@ -236,9 +282,11 @@ export function ContactDialog({
         email: "",
         phone: "",
         address: "",
+        jobTitle: "",
+        salary: "",
       });
     }
-  }, [open, initialData, reset, documentTypeOptions]);
+  }, [open, initialData, reset, documentTypeOptions, isEmployee]);
 
   // Consumidor Final (solo clientes): auto-fill, lock, set sriPersonType to '01'
   useEffect(() => {
@@ -279,10 +327,10 @@ export function ContactDialog({
     }
   }, [sriDocumentTypeCode, open, getValues, setValue]);
 
-  // Regla negocio: Cédula → solo Persona Natural; RUC → Persona Natural o Sociedad
+  // Regla negocio: Cédula / Empleados → solo Persona Natural; RUC → Persona Natural o Sociedad
   useEffect(() => {
     if (!open) return;
-    if (sriDocumentTypeCode === "C") {
+    if (sriDocumentTypeCode === "C" || isEmployee) {
       setValue("sriPersonType", "01", { shouldValidate: true });
     } else if (sriDocumentTypeCode === "R") {
       const current = getValues("sriPersonType");
@@ -290,7 +338,7 @@ export function ContactDialog({
         setValue("sriPersonType", "01", { shouldValidate: true });
       }
     }
-  }, [sriDocumentTypeCode, open, setValue, getValues]);
+  }, [sriDocumentTypeCode, open, setValue, getValues, isEmployee]);
 
   // Si es Consumidor Final (cliente), comprobar si ya existe en BD
   useEffect(() => {
@@ -322,8 +370,9 @@ export function ContactDialog({
   }, [open, companyId, type, sriDocumentTypeCode, initialData]);
 
   const isConsumidorFinalLocked = sriDocumentTypeCode === "F";
-  /** Tipo persona bloqueado: Cédula y Consumidor Final solo permiten Persona Natural. */
-  const isPersonTypeLocked = sriDocumentTypeCode === "C" || sriDocumentTypeCode === "F";
+  /** Tipo persona bloqueado: Cédula, Consumidor Final y Empleados solo permiten Persona Natural. */
+  const isPersonTypeLocked =
+    sriDocumentTypeCode === "C" || sriDocumentTypeCode === "F" || isEmployee;
 
   const handleTaxIdInput = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -369,9 +418,13 @@ export function ContactDialog({
         setValue("email", contact.email ?? "");
         setValue("phone", contact.phone ?? "");
         setValue("address", contact.address ?? "");
+        if (isEmployee) {
+          setValue("jobTitle", (contact as ContactForDialog).jobTitle ?? "");
+          setValue("salary", (contact as ContactForDialog).salary ?? "");
+        }
         toast({
           title: "Contacto encontrado",
-          description: `${contact.name ?? "Contacto"}. Se han cargado sus datos. Puedes añadir el rol actual (${type === "client" ? "Cliente" : "Proveedor"}) y guardar.`,
+          description: `${contact.name ?? "Contacto"}. Se han cargado sus datos. Puedes añadir el rol actual (${type === "client" ? "Cliente" : type === "supplier" ? "Proveedor" : "Empleado"}) y guardar.`,
           variant: "default",
         });
       }
@@ -389,6 +442,7 @@ export function ContactDialog({
     setValue,
     toast,
     type,
+    isEmployee,
   ]);
 
   useEffect(() => {
@@ -408,15 +462,27 @@ export function ContactDialog({
       const payload = {
         sriDocumentTypeCode: values.sriDocumentTypeCode,
         sriPersonType:
-          values.sriDocumentTypeCode === "C" ? "01" : values.sriPersonType,
+          values.sriDocumentTypeCode === "C" || type === "employee"
+            ? "01"
+            : values.sriPersonType,
         name: values.name.trim(),
-        tradeName: values.tradeName?.trim() || undefined,
+        tradeName: isEmployee ? undefined : (values.tradeName?.trim() || undefined),
         taxId,
         email: values.email?.trim() || undefined,
         phone: values.phone?.trim() || undefined,
         address: values.address?.trim() || undefined,
         isClient: type === "client",
         isSupplier: type === "supplier",
+        isEmployee: type === "employee",
+        ...(isEmployee && {
+          jobTitle: values.jobTitle?.trim() || undefined,
+          salary: (() => {
+            const sal = values.salary;
+            if (sal === undefined || sal === null || sal === "") return undefined;
+            const num = typeof sal === "number" ? sal : Number(String(sal).trim());
+            return Number.isNaN(num) ? undefined : num;
+          })(),
+        }),
       };
 
       const effectiveId = initialData?.id ?? resolvedContact?.id;
@@ -469,9 +535,13 @@ export function ContactDialog({
       ? isEditing
         ? "Editar Cliente"
         : "Nuevo Cliente"
-      : isEditing
-        ? "Editar Proveedor"
-        : "Nuevo Proveedor";
+      : type === "supplier"
+        ? isEditing
+          ? "Editar Proveedor"
+          : "Nuevo Proveedor"
+        : isEditing
+          ? "Editar Empleado"
+          : "Nuevo Empleado";
 
   const selectedDocCode = documentTypeOptions.some((o) => o.value === sriDocumentTypeCode)
     ? sriDocumentTypeCode
@@ -489,7 +559,8 @@ export function ContactDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="grid gap-4 py-4">
+        <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-0">
+          <div className="max-h-[60vh] overflow-y-auto px-1 grid gap-4 py-4">
           {/* 1. Tipo de documento */}
           <div className="grid gap-2">
             <Label htmlFor="sriDocumentTypeCode" className="font-medium text-slate-900">
@@ -536,6 +607,11 @@ export function ContactDialog({
             {sriDocumentTypeCode === "C" && (
               <p className="text-xs text-slate-500" role="status">
                 Con Cédula solo se permite Persona Natural.
+              </p>
+            )}
+            {isEmployee && (
+              <p className="text-xs text-slate-500" role="status">
+                Los empleados se registran como Persona Natural.
               </p>
             )}
           </div>
@@ -599,12 +675,12 @@ export function ContactDialog({
             )}
           </div>
 
-          {/* 4. Razón social */}
+          {/* 4. Razón social / Nombre */}
           <div className="grid gap-2">
-            <Label htmlFor="name">Razón social *</Label>
+            <Label htmlFor="name">{isEmployee ? "Nombre completo *" : "Razón social *"}</Label>
             <Input
               id="name"
-              placeholder="Ej: Empresa S.A."
+              placeholder={isEmployee ? "Ej: Juan Pérez" : "Ej: Empresa S.A."}
               disabled={isConsumidorFinalLocked}
               readOnly={isConsumidorFinalLocked}
               {...register("name")}
@@ -614,17 +690,67 @@ export function ContactDialog({
             )}
           </div>
 
-          {/* 5. Nombre comercial */}
-          <div className="grid gap-2">
-            <Label htmlFor="tradeName">Nombre comercial (opcional)</Label>
-            <Input
-              id="tradeName"
-              placeholder="Opcional"
-              disabled={isConsumidorFinalLocked}
-              readOnly={isConsumidorFinalLocked}
-              {...register("tradeName")}
-            />
-          </div>
+          {/* 5. Nombre comercial (oculto para empleados) */}
+          {!isEmployee && (
+            <div className="grid gap-2">
+              <Label htmlFor="tradeName">Nombre comercial (opcional)</Label>
+              <Input
+                id="tradeName"
+                placeholder="Opcional"
+                disabled={isConsumidorFinalLocked}
+                readOnly={isConsumidorFinalLocked}
+                {...register("tradeName")}
+              />
+            </div>
+          )}
+
+          {/* 5b. Cargo y Salario (solo empleados) */}
+          {isEmployee && (
+            <>
+              <div className="grid gap-2">
+                <Label htmlFor="jobTitle">Cargo *</Label>
+                <Select
+                  value={
+                    (() => {
+                      const v = watch("jobTitle") ?? "";
+                      return v && JOB_TITLES.includes(v as (typeof JOB_TITLES)[number])
+                        ? v
+                        : undefined;
+                    })()
+                  }
+                  onValueChange={(v) => setValue("jobTitle", v, { shouldValidate: true })}
+                >
+                  <SelectTrigger id="jobTitle">
+                    <SelectValue placeholder="Seleccione cargo" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {JOB_TITLES.map((title) => (
+                      <SelectItem key={title} value={title}>
+                        {title}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {errors.jobTitle && (
+                  <p className="text-red-500 text-xs">{errors.jobTitle.message}</p>
+                )}
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="salary">Salario (opcional)</Label>
+                <Input
+                  id="salary"
+                  type="number"
+                  min={0}
+                  step={0.01}
+                  placeholder="0.00"
+                  {...register("salary")}
+                />
+                {errors.salary && (
+                  <p className="text-red-500 text-xs">{errors.salary.message}</p>
+                )}
+              </div>
+            </>
+          )}
 
           {/* 6. Email & Teléfono */}
           <div className="grid grid-cols-2 gap-4">
@@ -671,8 +797,9 @@ export function ContactDialog({
               Este cliente (Consumidor Final) ya está registrado. No es posible guardar de nuevo.
             </p>
           )}
+          </div>
 
-          <DialogFooter>
+          <DialogFooter className="pt-4 pb-0">
             <Button
               type="button"
               variant="outline"

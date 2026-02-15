@@ -5,8 +5,11 @@ import {
   IsBoolean,
   IsEmail,
   IsIn,
+  IsNumber,
+  Min,
   Validate,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 import { TaxIdByDocumentTypeValidator } from './validate-tax-id-by-document';
 
 /** SRI document type codes: C=Cédula, R=RUC, P=Pasaporte, F=Consumidor Final */
@@ -62,4 +65,18 @@ export class CreateContactDto {
   @IsOptional()
   @IsBoolean()
   isSupplier?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  isEmployee?: boolean;
+
+  @IsOptional()
+  @IsString()
+  jobTitle?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0, { message: 'El salario debe ser un número positivo' })
+  @Type(() => Number)
+  salary?: number;
 }

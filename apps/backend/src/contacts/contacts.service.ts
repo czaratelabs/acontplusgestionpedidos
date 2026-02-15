@@ -70,6 +70,7 @@ export class ContactsService {
         existing.sriPersonType = dto.sriPersonType;
         existing.isClient = existing.isClient || dto.isClient === true;
         existing.isSupplier = existing.isSupplier || dto.isSupplier === true;
+        existing.isEmployee = existing.isEmployee || dto.isEmployee === true;
         return this.contactRepo.save(existing);
       }
 
@@ -79,6 +80,7 @@ export class ContactsService {
       if (!incomingIsRuc && existingIsRuc) {
         existing.isClient = existing.isClient || dto.isClient === true;
         existing.isSupplier = existing.isSupplier || dto.isSupplier === true;
+        existing.isEmployee = existing.isEmployee || dto.isEmployee === true;
         return this.contactRepo.save(existing);
       }
 
@@ -93,6 +95,7 @@ export class ContactsService {
         existing.address = dto.address?.trim() ?? existing.address;
         existing.isClient = existing.isClient || dto.isClient === true;
         existing.isSupplier = existing.isSupplier || dto.isSupplier === true;
+        existing.isEmployee = existing.isEmployee || dto.isEmployee === true;
         return this.contactRepo.save(existing);
       }
 
@@ -106,6 +109,9 @@ export class ContactsService {
       existing.address = dto.address?.trim() ?? existing.address;
       existing.isClient = existing.isClient || dto.isClient === true;
       existing.isSupplier = existing.isSupplier || dto.isSupplier === true;
+      existing.isEmployee = existing.isEmployee || dto.isEmployee === true;
+      if (dto.jobTitle !== undefined) existing.jobTitle = dto.jobTitle?.trim() ?? null;
+      if (dto.salary !== undefined) existing.salary = dto.salary == null ? null : String(dto.salary);
       return this.contactRepo.save(existing);
     }
 
@@ -120,6 +126,9 @@ export class ContactsService {
       address: dto.address?.trim() ?? null,
       isClient: dto.isClient ?? false,
       isSupplier: dto.isSupplier ?? false,
+      isEmployee: dto.isEmployee ?? false,
+      jobTitle: dto.jobTitle?.trim() ?? null,
+      salary: dto.salary == null ? null : String(dto.salary),
       company,
     });
     return this.contactRepo.save(contact);
@@ -134,7 +143,9 @@ export class ContactsService {
     search?: string,
   ): Promise<Contact[]> {
     const effectiveType: ContactTypeFilter =
-      type === 'client' || type === 'supplier' ? type : 'all';
+      type === 'client' || type === 'supplier' || type === 'employee'
+        ? type
+        : 'all';
     const trimmedSearch =
       typeof search === 'string' ? search.trim() : undefined;
     const hasSearch = !!trimmedSearch && trimmedSearch.length > 0;
@@ -145,9 +156,11 @@ export class ContactsService {
         company: { id: string };
         isClient?: boolean;
         isSupplier?: boolean;
+        isEmployee?: boolean;
       } = { company: { id: companyId } };
       if (effectiveType === 'client') baseWhere.isClient = true;
       if (effectiveType === 'supplier') baseWhere.isSupplier = true;
+      if (effectiveType === 'employee') baseWhere.isEmployee = true;
       return this.contactRepo.find({
         where: baseWhere,
         order: { name: 'ASC' },
@@ -188,6 +201,9 @@ export class ContactsService {
     }
     if (effectiveType === 'supplier') {
       qb.andWhere('contact.isSupplier = :isSupplier', { isSupplier: true });
+    }
+    if (effectiveType === 'employee') {
+      qb.andWhere('contact.isEmployee = :isEmployee', { isEmployee: true });
     }
 
     return qb.getMany();
@@ -261,6 +277,12 @@ export class ContactsService {
       contact.isClient = contact.isClient || dto.isClient;
     if (dto.isSupplier !== undefined)
       contact.isSupplier = contact.isSupplier || dto.isSupplier;
+    if (dto.isEmployee !== undefined)
+      contact.isEmployee = contact.isEmployee || dto.isEmployee;
+    if (dto.jobTitle !== undefined)
+      contact.jobTitle = dto.jobTitle?.trim() ?? null;
+    if (dto.salary !== undefined)
+      contact.salary = dto.salary == null ? null : String(dto.salary);
 
     return this.contactRepo.save(contact);
   }

@@ -1,7 +1,7 @@
 import { IsOptional, IsString, IsIn, MaxLength } from 'class-validator';
 import { Transform } from 'class-transformer';
 
-export type ContactTypeFilter = 'client' | 'supplier' | 'all';
+export type ContactTypeFilter = 'client' | 'supplier' | 'employee' | 'all';
 
 export class SearchContactDto {
   @IsOptional()
@@ -11,6 +11,6 @@ export class SearchContactDto {
   search?: string;
 
   @IsOptional()
-  @IsIn(['client', 'supplier', 'all'])
+  @IsIn(['client', 'supplier', 'employee', 'all'])
   type?: ContactTypeFilter = 'all';
 }

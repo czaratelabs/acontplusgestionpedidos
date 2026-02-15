@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { cookies } from "next/headers"; // 👈 Para leer cookies en el servidor
 import { jwtDecode } from "jwt-decode"; // 👈 Para leer el token
-import { Building2, Settings, SlidersHorizontal, FileText, Users, Truck } from "lucide-react";
+import { Building2, Settings, SlidersHorizontal, FileText, Users, Truck, Briefcase } from "lucide-react";
 import { UserNav } from "@/components/user-nav";
 
 // Definimos qué forma tiene el token por dentro
@@ -88,6 +88,10 @@ export default async function DashboardLayout({
           <Link href={`/dashboard/${id}/contacts/providers`} className="flex items-center gap-3 px-3 py-2.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg text-sm font-medium transition-all">
             <Truck className="h-4 w-4" />
             Proveedores
+          </Link>
+          <Link href={`/dashboard/${id}/contacts/employees`} className="flex items-center gap-3 px-3 py-2.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg text-sm font-medium transition-all">
+            <Briefcase className="h-4 w-4" />
+            Empleados
           </Link>
 
           {/* 🔒 SECCIÓN PROTEGIDA (Dinámica según el Token) */}
