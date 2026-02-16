@@ -37,9 +37,21 @@ const ALLOWED_ENTITIES = [
 ];
 
 function shouldAudit(entity: unknown): boolean {
-  if (entity == null) return false;
-  if (entity instanceof AuditLog) return false;
-  return ALLOWED_ENTITIES.some((cls) => entity instanceof cls);
+  if (entity == null) {
+    console.log('[Audit] shouldAudit: entity is null/undefined');
+    return false;
+  }
+  if (entity instanceof AuditLog) {
+    console.log('[Audit] shouldAudit: entity is AuditLog, skipping');
+    return false;
+  }
+  const result = ALLOWED_ENTITIES.some((cls) => entity instanceof cls);
+  console.log('[Audit] shouldAudit:', {
+    entityType: (entity as any)?.constructor?.name,
+    isAllowed: result,
+    allowedEntities: ALLOWED_ENTITIES.map(c => c.name),
+  });
+  return result;
 }
 
 function getEntityName(entity: object): string {
@@ -248,10 +260,30 @@ function getTimezoneFromDb(
 export class AuditSubscriber implements EntitySubscriberInterface {
   afterInsert(event: InsertEvent<object>): void {
     const entity = event.entity as Record<string, unknown>;
-    if (!entity || !shouldAudit(entity)) return;
+    
+    // Debug logging
+    console.log('[Audit] afterInsert triggered for entity:', {
+      entityType: entity?.constructor?.name,
+      entityId: entity?.id,
+      shouldAudit: entity ? shouldAudit(entity) : false,
+    });
+    
+    if (!entity || !shouldAudit(entity)) {
+      console.log('[Audit] Skipping audit - entity:', entity?.constructor?.name, 'shouldAudit:', shouldAudit(entity));
+      return;
+    }
+    
     const companyId = getCompanyIdFromEntry(entity);
     const performedBy = getPerformedBy();
     const repo = event.manager.getRepository(AuditLog);
+    
+    console.log('[Audit] Creating audit log for INSERT:', {
+      entityName: getEntityName(entity),
+      entityId: entity.id,
+      companyId,
+      performedBy,
+    });
+    
     getTimezoneFromDb(event.manager, companyId)
       .then((timeZone) => {
         const log = repo.create({
@@ -265,7 +297,13 @@ export class AuditSubscriber implements EntitySubscriberInterface {
         });
         return repo.save(log);
       })
-      .catch((err) => console.error('Audit afterInsert error', err));
+      .then((savedLog) => {
+        console.log('[Audit] Audit log saved successfully:', savedLog.id);
+      })
+      .catch((err) => {
+        console.error('[Audit] afterInsert error:', err);
+        console.error('[Audit] Error stack:', err?.stack);
+      });
   }
 
   afterUpdate(event: UpdateEvent<object>): void {

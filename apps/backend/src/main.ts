@@ -4,9 +4,11 @@ process.env.TZ = 'America/Guayaquil';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
+import { DataSource } from 'typeorm';
 import { AppModule } from './app.module';
 import { setClsServiceForAudit } from './common/audit-context';
 import { HttpExceptionFilter } from './common/http-exception.filter';
+import { AuditSubscriber } from './audit-logs/audit.subscriber';
 import cookieParser from 'cookie-parser';
 
 async function bootstrap() {
@@ -14,6 +16,16 @@ async function bootstrap() {
 
   const cls = app.get(ClsService);
   setClsServiceForAudit(cls);
+
+  // Register AuditSubscriber manually to ensure it's properly initialized
+  const dataSource = app.get(DataSource);
+  const auditSubscriber = app.get(AuditSubscriber);
+  if (!dataSource.subscribers.includes(auditSubscriber)) {
+    dataSource.subscribers.push(auditSubscriber);
+    console.log('[Audit] AuditSubscriber registered manually');
+  } else {
+    console.log('[Audit] AuditSubscriber already registered');
+  }
 
   app.useGlobalFilters(new HttpExceptionFilter());
   app.useGlobalPipes(

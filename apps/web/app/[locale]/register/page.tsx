@@ -140,7 +140,12 @@ export default function RegisterPage() {
                   <FormItem>
                     <FormLabel>Nombre de la empresa</FormLabel>
                     <FormControl>
-                      <Input placeholder="Mi Empresa S.A." {...field} className="bg-white" />
+                      <Input 
+                        autoComplete="organization" 
+                        placeholder="Mi Empresa S.A." 
+                        {...field} 
+                        className="bg-white" 
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -153,7 +158,12 @@ export default function RegisterPage() {
                   <FormItem>
                     <FormLabel>RUC / NIT</FormLabel>
                     <FormControl>
-                      <Input placeholder="1234567890001" {...field} className="bg-white" />
+                      <Input 
+                        autoComplete="organization-tax-id" 
+                        placeholder="1234567890001" 
+                        {...field} 
+                        className="bg-white" 
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -166,7 +176,12 @@ export default function RegisterPage() {
                   <FormItem>
                     <FormLabel>Tu nombre completo</FormLabel>
                     <FormControl>
-                      <Input placeholder="Juan Pérez" {...field} className="bg-white" />
+                      <Input 
+                        autoComplete="name" 
+                        placeholder="Juan Pérez" 
+                        {...field} 
+                        className="bg-white" 
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -179,7 +194,13 @@ export default function RegisterPage() {
                   <FormItem>
                     <FormLabel>Correo electrónico</FormLabel>
                     <FormControl>
-                      <Input type="email" placeholder="admin@miempresa.com" {...field} className="bg-white" />
+                      <Input 
+                        type="email" 
+                        autoComplete="email" 
+                        placeholder="admin@miempresa.com" 
+                        {...field} 
+                        className="bg-white" 
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -192,7 +213,13 @@ export default function RegisterPage() {
                   <FormItem>
                     <FormLabel>Contraseña</FormLabel>
                     <FormControl>
-                      <Input type="password" placeholder="••••••" {...field} className="bg-white" />
+                      <Input 
+                        type="password" 
+                        autoComplete="new-password" 
+                        placeholder="••••••" 
+                        {...field} 
+                        className="bg-white" 
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

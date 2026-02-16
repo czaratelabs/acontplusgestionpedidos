@@ -19,13 +19,16 @@ const nextConfig: NextConfig = {
       ? "'self' http://localhost:3001 ws://localhost:*"
       : "'self'";
     
+    // Permitir imágenes de dicebear.com para avatares generados
+    const imgSrc = "'self' https://api.dicebear.com data:";
+    
     return [
       {
         source: "/:path*",
         headers: [
           {
             key: "Content-Security-Policy",
-            value: `default-src 'self'; script-src ${scriptSrc}; style-src 'self' 'unsafe-inline'; connect-src ${connectSrc}; object-src 'self'; base-uri 'self';`,
+            value: `default-src 'self'; script-src ${scriptSrc}; style-src 'self' 'unsafe-inline'; connect-src ${connectSrc}; img-src ${imgSrc}; object-src 'self'; base-uri 'self';`,
           },
         ],
       },

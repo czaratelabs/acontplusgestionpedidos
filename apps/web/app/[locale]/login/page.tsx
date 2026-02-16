@@ -179,6 +179,8 @@ export default function LoginPage() {
                       <FormLabel>{t("email_label")}</FormLabel>
                       <FormControl>
                         <Input
+                          type="email"
+                          autoComplete="email"
                           placeholder={t("email_placeholder")}
                           {...field}
                           className="bg-white"
@@ -198,6 +200,7 @@ export default function LoginPage() {
                       <FormControl>
                         <Input
                           type="password"
+                          autoComplete="current-password"
                           placeholder="••••••"
                           {...field}
                           className="bg-white"
