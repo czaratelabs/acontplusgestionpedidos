@@ -16,7 +16,13 @@ async function bootstrap() {
   setClsServiceForAudit(cls);
 
   app.useGlobalFilters(new HttpExceptionFilter());
-  app.useGlobalPipes(new ValidationPipe({ whitelist: true }));
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      transform: true,
+      transformOptions: { enableImplicitConversion: true },
+    }),
+  );
   app.use(cookieParser());
 
   // CORS: frontend Next.js suele ir en 3000, backend en 3001

@@ -12,7 +12,7 @@ const DEFAULT_TIMEZONE = "America/Guayaquil";
  *
  * Ejemplo:
  *   const { timeZone, loading } = useCompanyTimezone(companyId);
- *   <DateFormatter dateString={date} timeZone={timeZone} />
+ *   <DateFormatter dateString={date} companyId={companyId} />
  */
 export function useCompanyTimezone(companyId: string | undefined) {
   const [timeZone, setTimeZone] = useState<string>(DEFAULT_TIMEZONE);

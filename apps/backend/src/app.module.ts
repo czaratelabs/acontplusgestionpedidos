@@ -17,6 +17,7 @@ import { ContactsModule } from './contacts/contacts.module';
 import { AuditLogsModule } from './audit-logs/audit-logs.module';
 import { SystemSettingsModule } from './system-settings/system-settings.module';
 import { RolesModule } from './roles/roles.module';
+import { BusinessRulesModule } from './business-rules/business-rules.module';
 import { AuditSubscriber } from './audit-logs/audit.subscriber';
 import { TimestampSubscriber } from './common/timestamp.subscriber';
 import { AuthClsMiddleware } from './common/auth-cls.middleware';
@@ -51,6 +52,7 @@ import { AuthClsMiddleware } from './common/auth-cls.middleware';
     AuditLogsModule,
     SystemSettingsModule,
     RolesModule,
+    BusinessRulesModule,
   ],
   controllers: [AppController],
   providers: [

@@ -5,8 +5,9 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import Cookies from "js-cookie";
-import { useRouter, useSearchParams } from "next/navigation";
-import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { useTranslations } from "next-intl";
+import { Link, useRouter } from "@/i18n/navigation";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -42,6 +43,7 @@ type CompanyOption = {
 };
 
 export default function LoginPage() {
+  const t = useTranslations("Auth");
   const router = useRouter();
   const searchParams = useSearchParams();
   const [error, setError] = useState("");
@@ -58,10 +60,10 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (searchParams.get("registered") === "1") {
-      setSuccess("Cuenta creada. Ya puedes iniciar sesión.");
+      setSuccess(t("account_created"));
       router.replace("/login", { scroll: false });
     }
-  }, [searchParams, router]);
+  }, [searchParams, router, t]);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -101,7 +103,7 @@ export default function LoginPage() {
         router.push(`/dashboard/${data.user.companyId}`);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Credenciales incorrectas");
+      setError(err instanceof Error ? err.message : t("invalid_credentials"));
     } finally {
       setLoading(false);
     }
@@ -125,7 +127,7 @@ export default function LoginPage() {
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        const message = data?.message ?? "Error al seleccionar empresa";
+        const message = data?.message ?? t("error_select_company");
         throw new Error(message);
       }
 
@@ -134,7 +136,7 @@ export default function LoginPage() {
       router.push(`/dashboard/${data.user.companyId}`);
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Error al seleccionar empresa"
+        err instanceof Error ? err.message : t("error_select_company")
       );
     } finally {
       setLoading(false);
@@ -157,12 +159,12 @@ export default function LoginPage() {
             <span className="text-white text-2xl">🔐</span>
           </div>
           <CardTitle className="text-2xl text-center font-bold text-slate-900">
-            {step === "select_company" ? "Selecciona la empresa" : "Bienvenido de nuevo"}
+            {step === "select_company" ? t("select_company_title") : t("welcome_back")}
           </CardTitle>
           <CardDescription className="text-center text-slate-500">
             {step === "select_company"
-              ? `Hola ${userName}, elige con qué empresa deseas acceder.`
-              : "Ingresa tus credenciales para acceder al ERP"}
+              ? t("select_company_subtitle", { name: userName })
+              : t("login_subtitle")}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -174,10 +176,10 @@ export default function LoginPage() {
                   name="email"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Correo Electrónico</FormLabel>
+                      <FormLabel>{t("email_label")}</FormLabel>
                       <FormControl>
                         <Input
-                          placeholder="admin@miempresa.com"
+                          placeholder={t("email_placeholder")}
                           {...field}
                           className="bg-white"
                         />
@@ -192,7 +194,7 @@ export default function LoginPage() {
                   name="password"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Contraseña</FormLabel>
+                      <FormLabel>{t("password_label")}</FormLabel>
                       <FormControl>
                         <Input
                           type="password"
@@ -222,7 +224,7 @@ export default function LoginPage() {
                   className="w-full bg-slate-900 hover:bg-slate-800 transition-all mt-2"
                   disabled={loading}
                 >
-                  {loading ? "Verificando..." : "Ingresar al Sistema"}
+                  {loading ? t("verifying") : t("submit")}
                 </Button>
               </form>
             </Form>
@@ -230,7 +232,7 @@ export default function LoginPage() {
             <div className="space-y-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium text-slate-700">
-                  Empresa
+                  {t("company_label")}
                 </label>
                 <select
                   value={selectedCompanyId}
@@ -259,7 +261,7 @@ export default function LoginPage() {
                   onClick={handleBackToCredentials}
                   disabled={loading}
                 >
-                  Volver
+                  {t("back")}
                 </Button>
                 <Button
                   type="button"
@@ -267,7 +269,7 @@ export default function LoginPage() {
                   onClick={handleSelectCompany}
                   disabled={loading}
                 >
-                  {loading ? "Accediendo..." : "Continuar"}
+                  {loading ? t("accessing") : t("continue")}
                 </Button>
               </div>
             </div>
@@ -275,15 +277,15 @@ export default function LoginPage() {
         </CardContent>
         <CardFooter className="flex flex-col gap-2 border-t bg-slate-50/50 pt-4 pb-6">
           <p className="text-sm text-slate-500">
-            ¿No tienes cuenta?{" "}
+            {t("no_account")}{" "}
             <Link
               href="/register"
               className="font-medium text-slate-900 hover:underline"
             >
-              Registrarse
+              {t("register")}
             </Link>
           </p>
-          <p className="text-xs text-slate-400">Protegido por Nexus Security v1.0</p>
+          <p className="text-xs text-slate-400">{t("protected")}</p>
         </CardFooter>
       </Card>
     </div>

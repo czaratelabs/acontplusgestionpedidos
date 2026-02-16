@@ -39,12 +39,6 @@ export class Company {
   @Column({ default: true })
   is_active: boolean;
 
-  @Column({ type: 'int', default: 2 })
-  decimal_precision: number;
-
-  @Column({ type: 'boolean', default: false })
-  prevent_negative_stock: boolean;
-
   @CreateDateColumn({ name: 'created_at' })
   created_at: Date;
 

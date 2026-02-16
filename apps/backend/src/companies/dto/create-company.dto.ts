@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsString, IsOptional, IsEmail, IsInt, Min, Max, IsBoolean } from 'class-validator';
+import { IsNotEmpty, IsString, IsOptional, IsEmail } from 'class-validator';
 
 export class CreateCompanyDto {
   @IsNotEmpty()
@@ -24,14 +24,4 @@ export class CreateCompanyDto {
   @IsOptional()
   @IsString()
   logo_url?: string;
-
-  @IsOptional()
-  @IsInt()
-  @Min(2)
-  @Max(4)
-  decimal_precision?: number;
-
-  @IsOptional()
-  @IsBoolean()
-  prevent_negative_stock?: boolean;
 }

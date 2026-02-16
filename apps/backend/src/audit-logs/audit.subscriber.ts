@@ -16,6 +16,7 @@ import { Tax } from '../taxes/entities/tax.entity';
 import { Contact } from '../contacts/entities/contact.entity';
 import { UserCompany } from '../users/entities/user-company.entity';
 import { Role } from '../roles/entities/role.entity';
+import { BusinessRule } from '../business-rules/entities/business-rule.entity';
 import {
   SystemSetting,
   SYSTEM_TIMEZONE_KEY,
@@ -29,6 +30,7 @@ const ALLOWED_ENTITIES = [
   User,
   UserCompany,
   Role,
+  BusinessRule,
   Tax,
   Contact,
 ];
