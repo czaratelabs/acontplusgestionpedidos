@@ -1,6 +1,7 @@
-import { Injectable, UnauthorizedException, ConflictException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, ConflictException, NotFoundException } from '@nestjs/common';
 import { UsersService } from '../users/users.service';
 import { CompaniesService } from '../companies/companies.service';
+import { RolesService } from '../roles/roles.service';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { RegisterDto } from './dto/register.dto';
@@ -16,6 +17,7 @@ export class AuthService {
   constructor(
     private usersService: UsersService,
     private companiesService: CompaniesService,
+    private rolesService: RolesService,
     private jwtService: JwtService,
   ) {}
 
@@ -167,6 +169,9 @@ export class AuthService {
       throw new ConflictException('Ya existe una cuenta con este correo electrónico');
     }
 
+    // Asegurar que los roles del sistema existan
+    await this.ensureSystemRoles();
+
     const company = await this.companiesService.create({
       name: dto.company_name,
       ruc_nit: dto.company_ruc_nit,
@@ -183,5 +188,31 @@ export class AuthService {
       message: 'Cuenta creada correctamente. Ya puedes iniciar sesión.',
       companyId: company.id,
     };
+  }
+
+  /**
+   * Asegura que los roles del sistema (admin, seller, owner) existan.
+   * Los crea si no existen.
+   */
+  private async ensureSystemRoles(): Promise<void> {
+    const systemRoles = ['admin', 'seller', 'owner'];
+    
+    for (const roleName of systemRoles) {
+      try {
+        await this.rolesService.findByNameForCompany(roleName, null);
+      } catch (error) {
+        // Si el rol no existe, crearlo
+        if (error instanceof NotFoundException) {
+          await this.rolesService.create({
+            name: roleName,
+            description: `Rol del sistema: ${roleName}`,
+            companyId: null, // Rol del sistema (sin empresa específica)
+            isActive: true,
+          });
+        } else {
+          throw error;
+        }
+      }
+    }
   }
 }

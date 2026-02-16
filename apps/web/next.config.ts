@@ -13,13 +13,19 @@ const nextConfig: NextConfig = {
     const scriptSrc = isDev
       ? "'self' 'unsafe-eval' 'unsafe-inline'"
       : "'self' 'unsafe-inline'";
+    
+    // Permitir conexiones al backend en desarrollo y estilos inline necesarios para React/Next.js
+    const connectSrc = isDev
+      ? "'self' http://localhost:3001 ws://localhost:*"
+      : "'self'";
+    
     return [
       {
         source: "/:path*",
         headers: [
           {
             key: "Content-Security-Policy",
-            value: `default-src 'self'; script-src ${scriptSrc}; object-src 'self'; base-uri 'self';`,
+            value: `default-src 'self'; script-src ${scriptSrc}; style-src 'self' 'unsafe-inline'; connect-src ${connectSrc}; object-src 'self'; base-uri 'self';`,
           },
         ],
       },

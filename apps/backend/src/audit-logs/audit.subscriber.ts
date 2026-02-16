@@ -33,6 +33,7 @@ const ALLOWED_ENTITIES = [
   BusinessRule,
   Tax,
   Contact,
+  SystemSetting,
 ];
 
 function shouldAudit(entity: unknown): boolean {
@@ -160,7 +161,11 @@ function sanitize(obj: object | undefined): Record<string, unknown> | null {
   const raw = typeof obj === 'object' && !Array.isArray(obj) ? obj : {};
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(raw)) {
+    // Skip sensitive fields
     if (k === 'password_hash' || k === 'password') continue;
+    // Skip timestamp fields that change on every update (not meaningful for audit diff)
+    if (k === 'updated_at' || k === 'updatedAt') continue;
+    // Serialize relations to just their ID
     if (typeof v === 'object' && v !== null && 'id' in (v as object)) {
       out[k] = { id: (v as { id: string }).id };
     } else {
@@ -170,13 +175,62 @@ function sanitize(obj: object | undefined): Record<string, unknown> | null {
   return out;
 }
 
-/** User shape from CLS: JWT strategy sets { id, full_name, email }; middleware may set only { id }. */
+/**
+ * Compare two objects and return only the fields that changed.
+ * Returns an object with only the changed fields from newObj.
+ */
+function getChangedFields(
+  oldObj: Record<string, unknown> | null,
+  newObj: Record<string, unknown> | null,
+): Record<string, unknown> | null {
+  if (newObj == null) return null;
+  if (oldObj == null) return newObj;
+
+  const changed: Record<string, unknown> = {};
+  const allKeys = new Set([...Object.keys(oldObj), ...Object.keys(newObj)]);
+
+  for (const key of allKeys) {
+    // Skip timestamp fields
+    if (key === 'updated_at' || key === 'updatedAt' || key === 'created_at' || key === 'createdAt') {
+      continue;
+    }
+
+    const oldVal = oldObj[key];
+    const newVal = newObj[key];
+
+    // Deep comparison for objects/arrays
+    if (JSON.stringify(oldVal) !== JSON.stringify(newVal)) {
+      changed[key] = newVal;
+    }
+  }
+
+  return Object.keys(changed).length > 0 ? changed : null;
+}
+
+/**
+ * Get the current user ID from CLS (Context Local Storage).
+ * User is set by AuthClsMiddleware (for all requests) or JwtStrategy (for protected routes).
+ * Returns null if no user context is available (e.g., system operations, unauthenticated requests).
+ */
 function getPerformedBy(): string | null {
   const cls = getClsServiceForAudit();
-  if (!cls) return null;
+  if (!cls) {
+    console.warn('[Audit] CLS service not available - audit log will have null performed_by');
+    return null;
+  }
+  
   const user = cls.get<{ id?: string } | undefined>('user');
-  if (user?.id) return String(user.id);
-  return null;
+  if (!user) {
+    console.warn('[Audit] No user in CLS context - audit log will have null performed_by');
+    return null;
+  }
+  
+  if (!user.id) {
+    console.warn('[Audit] User object in CLS missing id field:', user);
+    return null;
+  }
+  
+  return String(user.id);
 }
 
 function getTimezoneFromDb(
@@ -235,14 +289,36 @@ export class AuditSubscriber implements EntitySubscriberInterface {
 
     getTimezoneFromDb(event.manager, companyId)
       .then((timeZone) => {
+        // Sanitize both entries (removes passwords, timestamps, serializes relations)
+        const sanitizedOld = serializeDatesWithTimezone(sanitize(originalEntry ?? {}), timeZone);
+        const sanitizedNew = serializeDatesWithTimezone(sanitize(updatedEntry), timeZone);
+
+        // Only save fields that actually changed (diff comparison)
+        const changedFields = getChangedFields(sanitizedOld, sanitizedNew);
+
+        // If nothing changed (only timestamps), skip audit log
+        if (!changedFields || Object.keys(changedFields).length === 0) {
+          return;
+        }
+
+        // Build old_values with only the changed fields from original
+        const oldValues: Record<string, unknown> = {};
+        if (sanitizedOld) {
+          for (const key of Object.keys(changedFields)) {
+            if (key in sanitizedOld) {
+              oldValues[key] = sanitizedOld[key];
+            }
+          }
+        }
+
         const log = repo.create({
           entity_name: getEntityName(updatedEntry),
           entity_id: String(updatedEntry.id),
           company_id: companyId,
           action: AuditAction.UPDATE,
           performed_by: performedBy,
-          old_values: serializeDatesWithTimezone(sanitize(originalEntry ?? {}), timeZone),
-          new_values: serializeDatesWithTimezone(sanitize(updatedEntry), timeZone),
+          old_values: Object.keys(oldValues).length > 0 ? oldValues : null,
+          new_values: changedFields,
         });
         return repo.save(log);
       })

@@ -26,7 +26,8 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+// Siempre usar ruta relativa para que pase por el proxy de Next.js y respete CSP
+const API_BASE = "/api";
 
 const formSchema = z.object({
   company_name: z.string().min(1, "El nombre de la empresa es requerido"),
@@ -57,23 +58,59 @@ export default function RegisterPage() {
     setError("");
 
     try {
-      const res = await fetch(`${API_BASE}/auth/register`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(values),
-      });
+      let res: Response;
+      try {
+        res = await fetch(`${API_BASE}/auth/register`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(values),
+          credentials: "include",
+        });
+      } catch (fetchError: any) {
+        // Error de red/conexión antes de recibir respuesta
+        console.error("Error de red al registrar:", fetchError);
+        const errorMsg = fetchError?.message || String(fetchError);
+        
+        if (
+          errorMsg.includes("Failed to fetch") ||
+          errorMsg.includes("NetworkError") ||
+          errorMsg.includes("Network request failed") ||
+          fetchError instanceof TypeError
+        ) {
+          setError("No se pudo conectar con el servidor. Verifica que el servidor esté ejecutándose y que el backend esté disponible en el puerto 3001.");
+          return;
+        }
+        
+        throw fetchError;
+      }
 
-      const data = await res.json().catch(() => ({}));
+      let data: any = {};
+      try {
+        const text = await res.text();
+        if (text) {
+          data = JSON.parse(text);
+        }
+      } catch (parseError) {
+        // Si no se puede parsear, usar el status text
+        data = { message: res.statusText || `Error ${res.status}` };
+      }
 
       if (!res.ok) {
         const message =
-          data?.message ?? (Array.isArray(data?.message) ? data.message[0] : null) ?? `Error ${res.status}`;
+          data?.message ?? 
+          (Array.isArray(data?.message) ? data.message[0] : null) ?? 
+          (data?.error ?? `Error ${res.status}`);
         throw new Error(message);
       }
 
       router.push("/login?registered=1");
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Error al crear la cuenta");
+      console.error("Error al registrar:", err);
+      if (err instanceof TypeError && err.message === "Failed to fetch") {
+        setError("No se pudo conectar con el servidor. Verifica que el backend esté ejecutándose en el puerto 3001.");
+      } else {
+        setError(err instanceof Error ? err.message : "Error al crear la cuenta");
+      }
     } finally {
       setLoading(false);
     }
