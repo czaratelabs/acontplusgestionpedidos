@@ -8,7 +8,7 @@ import { DataSource } from 'typeorm';
 import { AppModule } from './app.module';
 import { setClsServiceForAudit } from './common/audit-context';
 import { HttpExceptionFilter } from './common/http-exception.filter';
-import { AuditSubscriber } from './common/audit/audit.subscriber';
+import { AuditSubscriber } from './audit-logs/audit.subscriber';
 import cookieParser from 'cookie-parser';
 
 async function bootstrap() {
@@ -22,17 +22,12 @@ async function bootstrap() {
   // TypeORM requires explicit registration for subscribers to work
   const dataSource = app.get(DataSource);
   const auditSubscriber = app.get(AuditSubscriber);
-  
-  // Remove any existing instance to avoid duplicates
-  const existingIndex = dataSource.subscribers.findIndex(
-    (sub) => sub.constructor.name === 'AuditSubscriber'
+  // subscribers is read-only in TypeORM typings; cast to allow replacing the array
+  const mutableDs = dataSource as DataSource & { subscribers: typeof dataSource.subscribers };
+  mutableDs.subscribers = mutableDs.subscribers.filter(
+    (sub) => sub.constructor.name !== 'AuditSubscriber'
   );
-  if (existingIndex >= 0) {
-    dataSource.subscribers.splice(existingIndex, 1);
-  }
-  
-  // Add the NestJS-managed instance
-  dataSource.subscribers.push(auditSubscriber);
+  mutableDs.subscribers.push(auditSubscriber);
   logger.log('AuditSubscriber registered successfully');
   logger.debug(
     `Total subscribers: ${dataSource.subscribers.length} - ` +

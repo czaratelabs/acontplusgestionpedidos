@@ -11,19 +11,28 @@ export class AuthClsMiddleware implements NestMiddleware {
     private readonly cls: ClsService,
   ) {}
 
-  async use(req: Request, res: Response, next: NextFunction) {
+  async use(req: Request, res: Response, next: NextFunction): Promise<void> {
     const token = this.extractToken(req);
+
     if (token) {
       try {
         const payload = await this.jwtService.verifyAsync(token);
         const user = { id: payload.sub };
-        this.cls.set('user', user);
-        return auditUserStorage.run(user, () => next());
+
+        // Crear contexto ClsService y envolver next en auditUserStorage para que
+        // el subscriber de TypeORM pueda leer el usuario desde auditUserStorage.getStore()
+        this.cls.run({ userId: payload.sub, timestamp: new Date() }, () => {
+          this.cls.set('user', user);
+          auditUserStorage.run(user, () => next());
+        });
+        return;
       } catch {
-        // Token invalid or expired, continue without user
+        // Token inválido o expirado — continuar sin usuario
       }
     }
-    next();
+
+    // Sin token o token inválido: crear contexto ClsService con system y llamar next()
+    this.cls.run({ userId: 'system', timestamp: new Date() }, () => next());
   }
 
   private extractToken(req: Request): string | null {

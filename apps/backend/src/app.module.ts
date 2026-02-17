@@ -2,8 +2,8 @@ import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ClsModule } from './common/cls/cls.module';
-import { ClsMiddleware } from './common/cls/cls.middleware';
-import { AuditSubscriber } from './common/audit/audit.subscriber';
+import { AuthClsMiddleware } from './common/auth-cls.middleware';
+import { AuditSubscriber } from './audit-logs/audit.subscriber';
 import { TimestampSubscriber } from './common/timestamp.subscriber';
 import { AuthModule } from './auth/auth.module';
 import { EstablishmentsModule } from './establishments/establishments.module';
@@ -27,7 +27,7 @@ import { AuditLogsModule } from './audit-logs/audit-logs.module';
       database: process.env.DB_DATABASE || 'erp_db',
       autoLoadEntities: true,
       synchronize: false,
-      subscribers: [TimestampSubscriber, AuditSubscriber],
+      subscribers: [TimestampSubscriber],
     }),
     AuthModule, // Incluye Users, Companies, Roles
     EstablishmentsModule, // Company#establishments
@@ -38,12 +38,12 @@ import { AuditLogsModule } from './audit-logs/audit-logs.module';
     SystemSettingsModule, // Company#settings
     AuditLogsModule,   // GET /audit-logs
   ],
-  providers: [AuditSubscriber], 
+  providers: [AuditSubscriber],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
     consumer
-      .apply(ClsMiddleware)
-      .forRoutes('*'); // Aplica a todas las rutas para auditoría total
+      .apply(AuthClsMiddleware)
+      .forRoutes('*');
   }
 }

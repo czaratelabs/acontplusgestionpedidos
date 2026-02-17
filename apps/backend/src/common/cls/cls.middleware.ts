@@ -11,12 +11,22 @@ export class ClsMiddleware implements NestMiddleware {
   ) {}
 
   use(req: Request, res: Response, next: NextFunction) {
-    const authHeader = req.headers.authorization;
     let userId: string = 'system';
-
+    
+    // 1. Try Authorization header first
+    let token: string | undefined;
+    const authHeader = req.headers.authorization;
     if (authHeader?.startsWith('Bearer ')) {
+      token = authHeader.substring(7);
+    }
+    
+    // 2. Fallback: httpOnly cookie 'token'
+    if (!token && req.cookies?.token) {
+      token = req.cookies.token;
+    }
+    
+    if (token) {
       try {
-        const token = authHeader.substring(7);
         const decoded = this.jwtService.decode(token) as any;
         // Captura el UUID del campo 'sub' (estándar JWT) o 'id'
         userId = decoded?.sub || decoded?.id || 'system';

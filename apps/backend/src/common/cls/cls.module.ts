@@ -3,8 +3,9 @@ import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ClsService } from './cls-context.service';
 import { ClsMiddleware } from './cls.middleware';
+import { AuthClsMiddleware } from '../auth-cls.middleware';
 
-@Global() // 👈 Importante: Hace que el servicio sea visible en AuthModule, RolesModule, etc.
+@Global()
 @Module({
   imports: [
     JwtModule.registerAsync({
@@ -16,7 +17,7 @@ import { ClsMiddleware } from './cls.middleware';
       }),
     }),
   ],
-  providers: [ClsService, ClsMiddleware],
-  exports: [ClsService, JwtModule], // 👈 JwtModule para que ClsMiddleware resuelva JwtService en AppModule
+  providers: [ClsService, ClsMiddleware, AuthClsMiddleware],
+  exports: [ClsService, JwtModule, AuthClsMiddleware],
 })
 export class ClsModule {}

@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import {
+  DataSource,
   EntitySubscriberInterface,
   EventSubscriber,
   InsertEvent,
@@ -8,7 +9,7 @@ import {
 } from 'typeorm';
 import { AuditLog, AuditAction } from './entities/audit-log.entity';
 import { Company } from '../companies/entities/company.entity';
-import { getClsServiceForAudit } from '../common/audit-context';
+import { auditUserStorage } from '../common/audit-context';
 import { Establishment } from '../establishments/entities/establishment.entity';
 import { EmissionPoint } from '../emission-points/entities/emission-point.entity';
 import { Warehouse } from '../warehouses/entities/warehouse.entity';
@@ -227,28 +228,21 @@ function getChangedFields(
 }
 
 /**
- * Get the current user ID from CLS (Context Local Storage).
- * User is set by AuthClsMiddleware (for all requests) or JwtStrategy (for protected routes).
- * Returns null if no user context is available (e.g., system operations, unauthenticated requests).
+ * Get the current user ID from auditUserStorage (AsyncLocalStorage nativo).
+ * Más confiable que nestjs-cls en contextos TypeORM fuera del DI de NestJS.
  */
 function getPerformedBy(logger: Logger): string | null {
-  const cls = getClsServiceForAudit();
-  if (!cls) {
-    logger.warn('CLS service not available - audit log will have null performed_by');
-    return null;
-  }
-  
-  const user = cls.get<{ id?: string } | undefined>('user');
+  const user = auditUserStorage.getStore();
+
   if (!user) {
-    logger.debug('No user in CLS context - audit log will have null performed_by');
     return null;
   }
-  
+
   if (!user.id) {
-    logger.warn(`User object in CLS missing id field: ${JSON.stringify(user)}`);
+    logger.warn('[Audit] User in auditUserStorage missing id field:', user);
     return null;
   }
-  
+
   return String(user.id);
 }
 
@@ -268,6 +262,8 @@ function getTimezoneFromDb(
 export class AuditSubscriber implements EntitySubscriberInterface {
   private readonly logger = new Logger(AuditSubscriber.name);
 
+  constructor(private readonly dataSource: DataSource) {}
+
   afterInsert(event: InsertEvent<object>): void {
     const entity = event.entity as Record<string, unknown>;
     
@@ -277,14 +273,14 @@ export class AuditSubscriber implements EntitySubscriberInterface {
     
     const companyId = getCompanyIdFromEntry(entity);
     const performedBy = getPerformedBy(this.logger);
-    const repo = event.manager.getRepository(AuditLog);
     
     this.logger.debug(
       `Creating audit log for INSERT: ${getEntityName(entity)} (id: ${entity.id}, companyId: ${companyId})`
     );
     
-    getTimezoneFromDb(event.manager, companyId)
+    getTimezoneFromDb(this.dataSource.manager, companyId)
       .then((timeZone) => {
+        const repo = this.dataSource.manager.getRepository(AuditLog);
         const log = repo.create({
           entity_name: getEntityName(entity),
           entity_id: String(entity.id),
@@ -312,7 +308,6 @@ export class AuditSubscriber implements EntitySubscriberInterface {
     const originalEntry = event.databaseEntity as Record<string, unknown> | undefined;
     if (!updatedEntry || !shouldAudit(updatedEntry)) return;
     const performedBy = getPerformedBy(this.logger);
-    const repo = event.manager.getRepository(AuditLog);
     const companyId = resolveCompanyIdForAudit(updatedEntry, originalEntry);
 
     if (!companyId) {
@@ -322,7 +317,7 @@ export class AuditSubscriber implements EntitySubscriberInterface {
       );
     }
 
-    getTimezoneFromDb(event.manager, companyId)
+    getTimezoneFromDb(this.dataSource.manager, companyId)
       .then((timeZone) => {
         // Sanitize both entries (removes passwords, timestamps, serializes relations)
         const sanitizedOld = serializeDatesWithTimezone(sanitize(originalEntry ?? {}), timeZone);
@@ -346,6 +341,7 @@ export class AuditSubscriber implements EntitySubscriberInterface {
           }
         }
 
+        const repo = this.dataSource.manager.getRepository(AuditLog);
         const log = repo.create({
           entity_name: getEntityName(updatedEntry),
           entity_id: String(updatedEntry.id),
@@ -370,9 +366,9 @@ export class AuditSubscriber implements EntitySubscriberInterface {
     if (!entity || !shouldAudit(entity)) return;
     const companyId = getCompanyIdFromEntry(entity);
     const performedBy = getPerformedBy(this.logger);
-    const repo = event.manager.getRepository(AuditLog);
-    getTimezoneFromDb(event.manager, companyId)
+    getTimezoneFromDb(this.dataSource.manager, companyId)
       .then((timeZone) => {
+        const repo = this.dataSource.manager.getRepository(AuditLog);
         const log = repo.create({
           entity_name: getEntityName(entity),
           entity_id: String(entity.id),

@@ -37,7 +37,7 @@ export class AuditLog {
   @Column({ type: 'varchar', enum: AuditAction })
   action: AuditAction;
 
-  @Column({ type: 'varchar', nullable: true, name: 'performed_by' })
+  @Column({ type: 'uuid', nullable: true, name: 'performed_by' })
   performed_by: string | null;
 
   @ManyToOne(() => User, { nullable: true })
