@@ -1,11 +1,9 @@
-import createMiddleware from "next-intl/middleware";
-import { routing } from "./src/i18n";
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 
-export default createMiddleware(routing, {
-  // Deshabilitar detección automática del idioma del navegador
-  // Esto previene que el idioma cambie basado en el header Accept-Language
-  localeDetection: false,
-});
+export function middleware(_request: NextRequest) {
+  return NextResponse.next();
+}
 
 export const config = {
   matcher: ["/((?!api|_next|.*\\..*).*)"],

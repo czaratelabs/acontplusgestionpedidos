@@ -1,8 +1,7 @@
 import { cookies } from "next/headers";
 import { jwtDecode } from "jwt-decode";
-import { getTranslations } from "next-intl/server";
 import { Building2, Settings, SlidersHorizontal, FileText, Users, Truck, Briefcase, Shield, Scale, Percent } from "lucide-react";
-import { Link } from "@/i18n/navigation";
+import Link from "next/link";
 import { UserNav } from "@/components/user-nav";
 
 // Definimos qué forma tiene el token por dentro
@@ -43,7 +42,6 @@ export default async function DashboardLayout({
   }
 
   const isAdminOrOwner = ["owner", "admin"].includes(user.role);
-  const t = await getTranslations("Sidebar");
 
   return (
     <div className="flex min-h-screen bg-slate-50 font-sans">
@@ -64,75 +62,72 @@ export default async function DashboardLayout({
         {/* Menú de Navegación */}
         <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
           <div className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-2 mt-2 px-3">
-            {t("operations")}
+            Operaciones
           </div>
-          
           <Link href={`/dashboard/${id}`} className="flex items-center gap-3 px-3 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium shadow-md shadow-blue-900/20 transition-all hover:bg-blue-500">
-            📊 {t("main_panel")}
+            📊 Panel Principal
           </Link>
-          
           <Link href={`/dashboard/${id}/pos`} className="flex items-center gap-3 px-3 py-2.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg text-sm font-medium transition-all">
-            🛒 {t("pos")}
+            🛒 Punto de Venta
           </Link>
-          
           <Link href={`/dashboard/${id}/inventory`} className="flex items-center gap-3 px-3 py-2.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg text-sm font-medium transition-all">
-            📦 {t("inventory")}
+            📦 Inventario
           </Link>
 
           <div className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-2 mt-8 px-3">
-            {t("directory")}
+            Directorio
           </div>
           <Link href={`/dashboard/${id}/contacts/clients`} className="flex items-center gap-3 px-3 py-2.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg text-sm font-medium transition-all">
             <Users className="h-4 w-4" />
-            {t("clients")}
+            Clientes
           </Link>
           <Link href={`/dashboard/${id}/contacts/providers`} className="flex items-center gap-3 px-3 py-2.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg text-sm font-medium transition-all">
             <Truck className="h-4 w-4" />
-            {t("providers")}
+            Proveedores
           </Link>
           <Link href={`/dashboard/${id}/contacts/employees`} className="flex items-center gap-3 px-3 py-2.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg text-sm font-medium transition-all">
             <Briefcase className="h-4 w-4" />
-            {t("employees")}
+            Empleados
           </Link>
 
           {isAdminOrOwner && (
             <>
               <div className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-2 mt-8 px-3">
-                {t("administration")}
+                Administración
               </div>
               <Link href={`/dashboard/${id}/users`} className="flex items-center gap-3 px-3 py-2.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg text-sm font-medium transition-all">
-                👥 {t("users_roles")}
+                👥 Usuarios y Roles
               </Link>
               <Link href={`/dashboard/${id}/settings/establishments`} className="flex items-center gap-3 px-3 py-2.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg text-sm font-medium transition-all">
                 <Building2 className="h-4 w-4" />
-                {t("establishments")}
+                Establecimientos
               </Link>
               <Link href={`/dashboard/${id}/settings/company`} className="flex items-center gap-3 px-3 py-2.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg text-sm font-medium transition-all">
                 <Settings className="h-4 w-4" />
-                {t("company_settings")}
+                Configuración Empresa
               </Link>
               <Link href={`/dashboard/${id}/settings/general`} className="flex items-center gap-3 px-3 py-2.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg text-sm font-medium transition-all">
                 <SlidersHorizontal className="h-4 w-4" />
-                {t("general_settings")}
+                Configuración General
               </Link>
               <Link href={`/dashboard/${id}/settings/taxes`} className="flex items-center gap-3 px-3 py-2.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg text-sm font-medium transition-all">
                 <Percent className="h-4 w-4" />
-                {t("taxes")}
+                Impuestos
               </Link>
               <Link href={`/dashboard/${id}/settings/audit`} className="flex items-center gap-3 px-3 py-2.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg text-sm font-medium transition-all">
                 <FileText className="h-4 w-4" />
-                {t("audit")}
+                Auditoría
               </Link>
               <Link href={`/dashboard/${id}/settings/roles`} className="flex items-center gap-3 px-3 py-2.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg text-sm font-medium transition-all">
                 <Shield className="h-4 w-4" />
-                {t("roles")}
+                Roles
               </Link>
               <Link href={`/dashboard/${id}/settings/business-rules`} className="flex items-center gap-3 px-3 py-2.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg text-sm font-medium transition-all">
                 <Scale className="h-4 w-4" />
-                {t("business_rules")}
+                Reglas de Negocio
               </Link>
               <Link href={`/dashboard/${id}/settings`} className="flex items-center gap-3 px-3 py-2.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg text-sm font-medium transition-all">
-                ⚙️ {t("global_settings")}
+                ⚙️ Configuración Global
               </Link>
             </>
           )}

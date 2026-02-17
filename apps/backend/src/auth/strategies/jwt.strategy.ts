@@ -2,7 +2,7 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
-import { ClsService } from 'nestjs-cls';
+import { ClsService } from '../../common/cls/cls-context.service';
 import { UsersService } from '../../users/users.service';
 
 export interface JwtPayload {

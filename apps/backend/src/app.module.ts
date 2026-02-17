@@ -1,68 +1,49 @@
 import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { ClsModule } from 'nestjs-cls';
-import { AppController } from './app.controller';
-import { AppService } from './app.service';
-import { CompaniesModule } from './companies/companies.module';
-import { UsersModule } from './users/users.module';
+import { ClsModule } from './common/cls/cls.module';
+import { ClsMiddleware } from './common/cls/cls.middleware';
+import { AuditSubscriber } from './common/audit/audit.subscriber';
+import { TimestampSubscriber } from './common/timestamp.subscriber';
 import { AuthModule } from './auth/auth.module';
-import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { EstablishmentsModule } from './establishments/establishments.module';
 import { EmissionPointsModule } from './emission-points/emission-points.module';
 import { WarehousesModule } from './warehouses/warehouses.module';
 import { TaxesModule } from './taxes/taxes.module';
 import { ContactsModule } from './contacts/contacts.module';
-import { AuditLogsModule } from './audit-logs/audit-logs.module';
 import { SystemSettingsModule } from './system-settings/system-settings.module';
-import { RolesModule } from './roles/roles.module';
-import { BusinessRulesModule } from './business-rules/business-rules.module';
-import { AuditSubscriber } from './audit-logs/audit.subscriber';
-import { TimestampSubscriber } from './common/timestamp.subscriber';
-import { AuthClsMiddleware } from './common/auth-cls.middleware';
+import { AuditLogsModule } from './audit-logs/audit-logs.module';
 
 @Module({
   imports: [
-    ConfigModule.forRoot(),
-    ClsModule.forRoot({
-      global: true,
-      middleware: { mount: true },
-    }),
+    ConfigModule.forRoot({ isGlobal: true }),
+    ClsModule,
     TypeOrmModule.forRoot({
       type: 'postgres',
-      host: 'localhost',
+      host: process.env.DB_HOST || 'localhost',
       port: 5432,
-      username: 'admin',
-      password: 'adminpassword',
-      database: 'erp_db',
-      extra: { options: '-c timezone=America/Guayaquil' },
+      username: process.env.DB_USERNAME || 'admin',
+      password: process.env.DB_PASSWORD || 'adminpassword',
+      database: process.env.DB_DATABASE || 'erp_db',
       autoLoadEntities: true,
-      synchronize: true,
-      subscribers: [AuditSubscriber, TimestampSubscriber],
+      synchronize: false,
+      subscribers: [TimestampSubscriber, AuditSubscriber],
     }),
-    CompaniesModule,
-    UsersModule,
-    AuthModule,
-    EstablishmentsModule,
-    EmissionPointsModule,
-    WarehousesModule,
-    TaxesModule,
-    ContactsModule,
-    AuditLogsModule,
-    SystemSettingsModule,
-    RolesModule,
-    BusinessRulesModule,
+    AuthModule, // Incluye Users, Companies, Roles
+    EstablishmentsModule, // Company#establishments
+    EmissionPointsModule, // Establishment#emissionPoints
+    WarehousesModule,     // Establishment#warehouses
+    TaxesModule,          // Company#taxes
+    ContactsModule,       // Company#contacts
+    SystemSettingsModule, // Company#settings
+    AuditLogsModule,   // GET /audit-logs
   ],
-  controllers: [AppController],
-  providers: [
-    AppService,
-    AuthClsMiddleware,
-    { provide: APP_GUARD, useClass: JwtAuthGuard },
-  ],
+  providers: [AuditSubscriber], 
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
-    consumer.apply(AuthClsMiddleware).forRoutes('*');
+    consumer
+      .apply(ClsMiddleware)
+      .forRoutes('*'); // Aplica a todas las rutas para auditoría total
   }
 }

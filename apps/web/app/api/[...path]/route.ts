@@ -4,37 +4,42 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { path: string[] } }
+  { params }: { params: Promise<{ path: string[] }> }
 ) {
-  return proxyRequest(request, params.path, "GET");
+  const { path } = await params;
+  return proxyRequest(request, path, "GET");
 }
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { path: string[] } }
+  { params }: { params: Promise<{ path: string[] }> }
 ) {
-  return proxyRequest(request, params.path, "POST");
+  const { path } = await params;
+  return proxyRequest(request, path, "POST");
 }
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { path: string[] } }
+  { params }: { params: Promise<{ path: string[] }> }
 ) {
-  return proxyRequest(request, params.path, "PUT");
+  const { path } = await params;
+  return proxyRequest(request, path, "PUT");
 }
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { path: string[] } }
+  { params }: { params: Promise<{ path: string[] }> }
 ) {
-  return proxyRequest(request, params.path, "PATCH");
+  const { path } = await params;
+  return proxyRequest(request, path, "PATCH");
 }
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { path: string[] } }
+  { params }: { params: Promise<{ path: string[] }> }
 ) {
-  return proxyRequest(request, params.path, "DELETE");
+  const { path } = await params;
+  return proxyRequest(request, path, "DELETE");
 }
 
 async function proxyRequest(
@@ -140,7 +145,8 @@ async function proxyRequest(
       headers: responseHeaders,
     });
   } catch (err) {
-    console.error(`[api/proxy] Unexpected error proxying ${method} request to ${pathSegments.join("/")}:`, err);
+    const pathStr = Array.isArray(pathSegments) ? pathSegments.join("/") : String(pathSegments ?? "?");
+    console.error(`[api/proxy] Unexpected error proxying ${method} request to ${pathStr}:`, err);
     const errorMessage = err instanceof Error ? err.message : String(err);
     
     return NextResponse.json(

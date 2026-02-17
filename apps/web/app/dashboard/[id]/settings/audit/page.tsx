@@ -23,7 +23,8 @@ import { useToast } from "@/components/ui/use-toast";
 import { Eye } from "lucide-react";
 import { DateFormatter } from "@/components/date-formatter";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+// Usar /api para que pase por el proxy de Next.js (evita CORS, reenvía cookies, consistente con contact-list)
+const API_BASE = "/api";
 
 type AuditLogItem = {
   id: string;

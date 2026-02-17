@@ -62,10 +62,15 @@ async function getTimezoneForCompany(
   companyId: string | null,
 ): Promise<string> {
   if (!companyId) return DEFAULT_TIMEZONE;
-  const setting = await manager.getRepository(SystemSetting).findOne({
-    where: { companyId, key: SYSTEM_TIMEZONE_KEY },
-  });
-  return setting?.value?.trim() ?? DEFAULT_TIMEZONE;
+  try {
+    const setting = await manager.getRepository(SystemSetting).findOne({
+      where: { companyId, key: SYSTEM_TIMEZONE_KEY },
+    });
+    return setting?.value?.trim() ?? DEFAULT_TIMEZONE;
+  } catch (error) {
+    // Si hay un error (por ejemplo, query runner liberado), usar timezone por defecto
+    return DEFAULT_TIMEZONE;
+  }
 }
 
 /** Valida y sanea el timezone para uso seguro en SET LOCAL (PostgreSQL no admite $1 en SET). */
@@ -84,9 +89,31 @@ export class TimestampSubscriber implements EntitySubscriberInterface {
     if (!hasTimestampColumns(entity)) return;
 
     const companyId = getCompanyIdFromEntry(entity);
-    const timeZone = sanitizeTimezone(await getTimezoneForCompany(event.manager, companyId));
+    
+    // Obtener el queryRunner del evento si está disponible
+    const queryRunner = (event as any).queryRunner;
+    const manager = queryRunner?.manager || event.manager;
+    
+    let timeZone: string;
+    try {
+      timeZone = sanitizeTimezone(await getTimezoneForCompany(manager, companyId));
+    } catch (error) {
+      // Si falla obtener el timezone, usar el por defecto
+      timeZone = DEFAULT_TIMEZONE;
+    }
 
-    await event.manager.query(`SET LOCAL timezone = '${timeZone}'`);
+    // Ejecutar SET LOCAL timezone usando el queryRunner si está disponible
+    try {
+      if (queryRunner && !queryRunner.isReleased) {
+        await queryRunner.query(`SET LOCAL timezone = '${timeZone}'`);
+      } else {
+        // Fallback: usar manager directamente
+        await event.manager.query(`SET LOCAL timezone = '${timeZone}'`);
+      }
+    } catch (error) {
+      // Si falla establecer el timezone, continuar sin él
+      // Los timestamps se guardarán con el timezone por defecto de la base de datos
+    }
   }
 
   async beforeUpdate(event: UpdateEvent<object>): Promise<void> {
@@ -96,8 +123,30 @@ export class TimestampSubscriber implements EntitySubscriberInterface {
     if (!hasTimestampColumns(entity)) return;
 
     const companyId = getCompanyIdFromEntry(entity) ?? getCompanyIdFromEntry(dbEntity);
-    const timeZone = sanitizeTimezone(await getTimezoneForCompany(event.manager, companyId));
+    
+    // Obtener el queryRunner del evento si está disponible
+    const queryRunner = (event as any).queryRunner;
+    const manager = queryRunner?.manager || event.manager;
+    
+    let timeZone: string;
+    try {
+      timeZone = sanitizeTimezone(await getTimezoneForCompany(manager, companyId));
+    } catch (error) {
+      // Si falla obtener el timezone, usar el por defecto
+      timeZone = DEFAULT_TIMEZONE;
+    }
 
-    await event.manager.query(`SET LOCAL timezone = '${timeZone}'`);
+    // Ejecutar SET LOCAL timezone usando el queryRunner si está disponible
+    try {
+      if (queryRunner && !queryRunner.isReleased) {
+        await queryRunner.query(`SET LOCAL timezone = '${timeZone}'`);
+      } else {
+        // Fallback: usar manager directamente
+        await event.manager.query(`SET LOCAL timezone = '${timeZone}'`);
+      }
+    } catch (error) {
+      // Si falla establecer el timezone, continuar sin él
+      // Los timestamps se guardarán con el timezone por defecto de la base de datos
+    }
   }
 }

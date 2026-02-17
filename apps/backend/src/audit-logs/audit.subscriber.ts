@@ -1,3 +1,4 @@
+import { Injectable, Logger } from '@nestjs/common';
 import {
   EntitySubscriberInterface,
   EventSubscriber,
@@ -38,19 +39,25 @@ const ALLOWED_ENTITIES = [
 
 function shouldAudit(entity: unknown): boolean {
   if (entity == null) {
-    console.log('[Audit] shouldAudit: entity is null/undefined');
     return false;
   }
-  if (entity instanceof AuditLog) {
-    console.log('[Audit] shouldAudit: entity is AuditLog, skipping');
+  
+  // Skip AuditLog entities to prevent infinite loops
+  const entityName = (entity as any)?.constructor?.name;
+  if (entityName === 'AuditLog') {
     return false;
   }
-  const result = ALLOWED_ENTITIES.some((cls) => entity instanceof cls);
-  console.log('[Audit] shouldAudit:', {
-    entityType: (entity as any)?.constructor?.name,
-    isAllowed: result,
-    allowedEntities: ALLOWED_ENTITIES.map(c => c.name),
-  });
+  
+  // Check using instanceof (works for direct instances)
+  let result = ALLOWED_ENTITIES.some((cls) => entity instanceof cls);
+  
+  // Fallback: check by constructor name if instanceof fails
+  // This handles cases where TypeORM creates proxies or different instances
+  if (!result && entityName) {
+    const allowedNames = ALLOWED_ENTITIES.map(c => c.name);
+    result = allowedNames.includes(entityName);
+  }
+  
   return result;
 }
 
@@ -224,21 +231,21 @@ function getChangedFields(
  * User is set by AuthClsMiddleware (for all requests) or JwtStrategy (for protected routes).
  * Returns null if no user context is available (e.g., system operations, unauthenticated requests).
  */
-function getPerformedBy(): string | null {
+function getPerformedBy(logger: Logger): string | null {
   const cls = getClsServiceForAudit();
   if (!cls) {
-    console.warn('[Audit] CLS service not available - audit log will have null performed_by');
+    logger.warn('CLS service not available - audit log will have null performed_by');
     return null;
   }
   
   const user = cls.get<{ id?: string } | undefined>('user');
   if (!user) {
-    console.warn('[Audit] No user in CLS context - audit log will have null performed_by');
+    logger.debug('No user in CLS context - audit log will have null performed_by');
     return null;
   }
   
   if (!user.id) {
-    console.warn('[Audit] User object in CLS missing id field:', user);
+    logger.warn(`User object in CLS missing id field: ${JSON.stringify(user)}`);
     return null;
   }
   
@@ -256,33 +263,25 @@ function getTimezoneFromDb(
     .then((s) => s?.value?.trim() ?? 'UTC');
 }
 
+@Injectable()
 @EventSubscriber()
 export class AuditSubscriber implements EntitySubscriberInterface {
+  private readonly logger = new Logger(AuditSubscriber.name);
+
   afterInsert(event: InsertEvent<object>): void {
     const entity = event.entity as Record<string, unknown>;
     
-    // Debug logging
-    console.log('[Audit] afterInsert triggered for entity:', {
-      entityType: entity?.constructor?.name,
-      entityId: entity?.id,
-      shouldAudit: entity ? shouldAudit(entity) : false,
-    });
-    
     if (!entity || !shouldAudit(entity)) {
-      console.log('[Audit] Skipping audit - entity:', entity?.constructor?.name, 'shouldAudit:', shouldAudit(entity));
       return;
     }
     
     const companyId = getCompanyIdFromEntry(entity);
-    const performedBy = getPerformedBy();
+    const performedBy = getPerformedBy(this.logger);
     const repo = event.manager.getRepository(AuditLog);
     
-    console.log('[Audit] Creating audit log for INSERT:', {
-      entityName: getEntityName(entity),
-      entityId: entity.id,
-      companyId,
-      performedBy,
-    });
+    this.logger.debug(
+      `Creating audit log for INSERT: ${getEntityName(entity)} (id: ${entity.id}, companyId: ${companyId})`
+    );
     
     getTimezoneFromDb(event.manager, companyId)
       .then((timeZone) => {
@@ -298,11 +297,13 @@ export class AuditSubscriber implements EntitySubscriberInterface {
         return repo.save(log);
       })
       .then((savedLog) => {
-        console.log('[Audit] Audit log saved successfully:', savedLog.id);
+        this.logger.debug(`Audit log saved successfully: ${savedLog.id}`);
       })
       .catch((err) => {
-        console.error('[Audit] afterInsert error:', err);
-        console.error('[Audit] Error stack:', err?.stack);
+        this.logger.error(
+          `Error creating audit log for INSERT: ${getEntityName(entity)} (id: ${entity.id})`,
+          err?.stack || err
+        );
       });
   }
 
@@ -310,19 +311,15 @@ export class AuditSubscriber implements EntitySubscriberInterface {
     const updatedEntry = event.entity as Record<string, unknown>;
     const originalEntry = event.databaseEntity as Record<string, unknown> | undefined;
     if (!updatedEntry || !shouldAudit(updatedEntry)) return;
-    const performedBy = getPerformedBy();
+    const performedBy = getPerformedBy(this.logger);
     const repo = event.manager.getRepository(AuditLog);
     const companyId = resolveCompanyIdForAudit(updatedEntry, originalEntry);
 
     if (!companyId) {
       const entityName = getEntityName(updatedEntry);
-      console.warn(`[Audit] Missing company_id for ${entityName} update:`, {
-        entityId: updatedEntry.id,
-        updatedEntryKeys: Object.keys(updatedEntry),
-        originalEntryKeys: originalEntry ? Object.keys(originalEntry) : [],
-        updatedEntryCompany: (updatedEntry as any).company,
-        originalEntryCompany: originalEntry ? (originalEntry as any).company : null,
-      });
+      this.logger.warn(
+        `Missing company_id for ${entityName} update (id: ${updatedEntry.id})`
+      );
     }
 
     getTimezoneFromDb(event.manager, companyId)
@@ -360,14 +357,19 @@ export class AuditSubscriber implements EntitySubscriberInterface {
         });
         return repo.save(log);
       })
-      .catch((err) => console.error('Audit afterUpdate error', err));
+      .catch((err) => {
+        this.logger.error(
+          `Error creating audit log for UPDATE: ${getEntityName(updatedEntry)} (id: ${updatedEntry.id})`,
+          err?.stack || err
+        );
+      });
   }
 
   beforeRemove(event: RemoveEvent<object>): void {
     const entity = (event.databaseEntity ?? event.entity) as Record<string, unknown>;
     if (!entity || !shouldAudit(entity)) return;
     const companyId = getCompanyIdFromEntry(entity);
-    const performedBy = getPerformedBy();
+    const performedBy = getPerformedBy(this.logger);
     const repo = event.manager.getRepository(AuditLog);
     getTimezoneFromDb(event.manager, companyId)
       .then((timeZone) => {
@@ -382,6 +384,11 @@ export class AuditSubscriber implements EntitySubscriberInterface {
         });
         return repo.save(log);
       })
-      .catch((err) => console.error('Audit beforeRemove error', err));
+      .catch((err) => {
+        this.logger.error(
+          `Error creating audit log for DELETE: ${getEntityName(entity)} (id: ${entity.id})`,
+          err?.stack || err
+        );
+      });
   }
 }

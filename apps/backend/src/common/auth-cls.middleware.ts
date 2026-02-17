@@ -1,7 +1,7 @@
 import { Injectable, NestMiddleware } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
 import { JwtService } from '@nestjs/jwt';
-import { ClsService } from 'nestjs-cls';
+import { ClsService } from './cls/cls-context.service';
 import { auditUserStorage } from './audit-context';
 
 @Injectable()

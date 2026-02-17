@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from 'async_hooks';
-import type { ClsService } from 'nestjs-cls';
+import type { ClsService } from './cls/cls-context.service';
 
 export interface AuditUser {
   id: string;

@@ -1,8 +1,7 @@
 "use client";
 
 import { useState, useEffect, use, useMemo } from "react";
-import { useRouter } from "@/i18n/navigation";
-import { useTranslations } from "next-intl";
+import { useRouter } from "next/navigation";
 import Cookies from "js-cookie";
 import { jwtDecode } from "jwt-decode";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -38,35 +37,30 @@ export default function GeneralSettingsPage({
   params: Promise<{ id: string }>;
 }) {
   const { id: companyId } = use(params);
-  const t = useTranslations("Settings");
-  const tCommon = useTranslations("Common");
-  const tFormat = useTranslations("GeneralSettings");
-  const tCurrency = useTranslations("Currency");
-  const tTimezone = useTranslations("Timezone");
 
   const DATE_FORMAT_OPTIONS = useMemo(
     () => [
-      { value: "DD/MM/YYYY", label: tFormat("date_format_ddmmyyyy") },
-      { value: "YYYY-MM-DD", label: tFormat("date_format_yyyymmdd") },
-      { value: "MM/DD/YYYY", label: tFormat("date_format_mmddyyyy") },
-      { value: "DD de MMM, YYYY", label: tFormat("date_format_verbose") },
+      { value: "DD/MM/YYYY", label: "DD/MM/AAAA" },
+      { value: "YYYY-MM-DD", label: "AAAA-MM-DD" },
+      { value: "MM/DD/YYYY", label: "MM/DD/AAAA" },
+      { value: "DD de MMM, YYYY", label: "DD de MMM, AAAA" },
     ],
-    [tFormat]
+    []
   );
 
+  const TIMEZONE_LABELS: Record<string, string> = {
+    Guayaquil: "Guayaquil",
+    Bogota: "Bogotá",
+    NewYork: "Nueva York",
+    Madrid: "Madrid",
+    UTC: "UTC",
+  };
   const TIMEZONE_OPTIONS = useMemo(
-    () => TIMEZONE_RAW.map((opt) => ({ value: opt.value, label: tTimezone(opt.key) })),
-    [tTimezone]
+    () => TIMEZONE_RAW.map((opt) => ({ value: opt.value, label: TIMEZONE_LABELS[opt.key] ?? opt.value })),
+    []
   );
 
-  const CURRENCY_OPTIONS_TRANSLATED = useMemo(
-    () =>
-      CURRENCY_OPTIONS.map((opt) => ({
-        ...opt,
-        label: tCurrency(opt.value),
-      })),
-    [tCurrency]
-  );
+  const CURRENCY_OPTIONS_TRANSLATED = CURRENCY_OPTIONS;
 
   const [userRole, setUserRole] = useState<string | null>(null);
   const [systemTimezone, setSystemTimezone] = useState<string>("America/Guayaquil");
@@ -160,14 +154,14 @@ export default function GeneralSettingsPage({
       setSystemTimezone(value);
       router.refresh();
       toast({
-        title: t("success"),
-        description: t("timezone_saved"),
+        title: "Éxito",
+        description: "Zona horaria guardada.",
         variant: "default",
       });
     } catch {
       toast({
-        title: t("error"),
-        description: t("timezone_error"),
+        title: "Error",
+        description: "Error al guardar la zona horaria.",
         variant: "destructive",
       });
     } finally {
@@ -189,14 +183,14 @@ export default function GeneralSettingsPage({
       setSystemCurrency(value);
       router.refresh();
       toast({
-        title: t("success"),
-        description: t("currency_saved"),
+        title: "Éxito",
+        description: "Moneda guardada.",
         variant: "default",
       });
     } catch {
       toast({
-        title: t("error"),
-        description: t("currency_error"),
+        title: "Error",
+        description: "Error al guardar la moneda.",
         variant: "destructive",
       });
     } finally {
@@ -218,14 +212,14 @@ export default function GeneralSettingsPage({
       setSystemDateFormat(value);
       router.refresh();
       toast({
-        title: t("success"),
-        description: t("date_format_saved"),
+        title: "Éxito",
+        description: "Formato de fecha guardado.",
         variant: "default",
       });
     } catch {
       toast({
-        title: t("error"),
-        description: t("date_format_error"),
+        title: "Error",
+        description: "Error al guardar el formato de fecha.",
         variant: "destructive",
       });
     } finally {
@@ -238,8 +232,8 @@ export default function GeneralSettingsPage({
   if (userRole === null) {
     return (
       <div className="space-y-6">
-        <h1 className="text-2xl font-bold">{t("general_settings")}</h1>
-        <Card><CardContent className="pt-6">{tCommon("loading")}</CardContent></Card>
+        <h1 className="text-2xl font-bold">Configuración General</h1>
+        <Card><CardContent className="pt-6">Cargando...</CardContent></Card>
       </div>
     );
   }
@@ -247,8 +241,8 @@ export default function GeneralSettingsPage({
   if (!isAdminOrOwner) {
     return (
       <div className="space-y-6">
-        <h1 className="text-2xl font-bold">{t("general_settings")}</h1>
-        <Card><CardContent className="pt-6">{t("redirecting")}</CardContent></Card>
+        <h1 className="text-2xl font-bold">Configuración General</h1>
+        <Card><CardContent className="pt-6">Redirigiendo...</CardContent></Card>
       </div>
     );
   }
@@ -256,33 +250,32 @@ export default function GeneralSettingsPage({
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-bold">{t("general_settings")}</h1>
+        <h1 className="text-2xl font-bold">Configuración General</h1>
         <p className="text-slate-500 text-sm mt-1">
-          {t("general_description")}
+          Ajustes generales del sistema para tu empresa.
         </p>
       </div>
 
-      {/* Section: System Settings (timezone, currency, formato fecha) */}
       {isAdminOrOwner && (
         <>
           <Card>
             <CardHeader>
-              <CardTitle>{t("timezone_title")}</CardTitle>
+              <CardTitle>Zona horaria</CardTitle>
               <CardDescription>
-                {t("timezone_description")}
+                Zona horaria para fechas y horas del sistema.
               </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="flex flex-wrap items-end gap-4 max-w-md">
                 <div className="grid gap-2 flex-1 min-w-[200px]">
-                  <Label htmlFor="system-timezone">{t("timezone_label")}</Label>
+                  <Label htmlFor="system-timezone">Zona horaria</Label>
                   <Select
                     value={systemTimezone}
                     onValueChange={(v) => setSystemTimezone(v)}
                     disabled={loadingTimezone}
                   >
                     <SelectTrigger id="system-timezone">
-                      <SelectValue placeholder={t("select_timezone")} />
+                      <SelectValue placeholder="Seleccionar zona horaria" />
                     </SelectTrigger>
                     <SelectContent>
                       {TIMEZONE_OPTIONS.map((opt) => (
@@ -297,7 +290,7 @@ export default function GeneralSettingsPage({
                   onClick={() => onSaveTimezone(systemTimezone)}
                   disabled={loadingTimezone || savingTimezone}
                 >
-                  {savingTimezone ? tCommon("saving") : t("save_timezone")}
+                  {savingTimezone ? "Guardando..." : "Guardar zona horaria"}
                 </Button>
               </div>
             </CardContent>
@@ -305,22 +298,22 @@ export default function GeneralSettingsPage({
 
           <Card>
             <CardHeader>
-              <CardTitle>{t("currency_title")}</CardTitle>
+              <CardTitle>Moneda</CardTitle>
               <CardDescription>
-                {t("currency_description")}
+                Moneda por defecto para importes.
               </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="flex flex-wrap items-end gap-4 max-w-md">
                 <div className="grid gap-2 flex-1 min-w-[200px]">
-                  <Label htmlFor="system-currency">{t("currency_label")}</Label>
+                  <Label htmlFor="system-currency">Moneda</Label>
                   <Select
                     value={systemCurrency}
                     onValueChange={(v) => setSystemCurrency(v)}
                     disabled={loadingCurrency}
                   >
                     <SelectTrigger id="system-currency">
-                      <SelectValue placeholder={t("select_currency")} />
+                      <SelectValue placeholder="Seleccionar moneda" />
                     </SelectTrigger>
                     <SelectContent>
                       {CURRENCY_OPTIONS_TRANSLATED.map((opt) => (
@@ -335,7 +328,7 @@ export default function GeneralSettingsPage({
                   onClick={() => onSaveCurrency(systemCurrency)}
                   disabled={loadingCurrency || savingCurrency}
                 >
-                  {savingCurrency ? tCommon("saving") : t("save_currency")}
+                  {savingCurrency ? "Guardando..." : "Guardar moneda"}
                 </Button>
               </div>
             </CardContent>
@@ -343,22 +336,22 @@ export default function GeneralSettingsPage({
 
           <Card>
             <CardHeader>
-              <CardTitle>{t("date_format_title")}</CardTitle>
+              <CardTitle>Formato de fecha</CardTitle>
               <CardDescription>
-                {t("date_format_description")}
+                Formato de visualización de fechas.
               </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="flex items-end gap-4 max-w-2xl">
                 <div className="grid gap-2 flex-1 min-w-0">
-                  <Label htmlFor="system-dateformat">{t("date_format_label")}</Label>
+                  <Label htmlFor="system-dateformat">Formato de fecha</Label>
                   <Select
                     value={systemDateFormat}
                     onValueChange={(v) => setSystemDateFormat(v)}
                     disabled={loadingDateFormat}
                   >
                     <SelectTrigger id="system-dateformat">
-                      <SelectValue placeholder={t("select_format")} />
+                      <SelectValue placeholder="Seleccionar formato" />
                     </SelectTrigger>
                     <SelectContent>
                       {DATE_FORMAT_OPTIONS.map((opt) => (
@@ -373,7 +366,7 @@ export default function GeneralSettingsPage({
                   onClick={() => onSaveDateFormat(systemDateFormat)}
                   disabled={loadingDateFormat || savingDateFormat}
                 >
-                  {savingDateFormat ? tCommon("saving") : t("save_format")}
+                  {savingDateFormat ? "Guardando..." : "Guardar formato"}
                 </Button>
               </div>
             </CardContent>

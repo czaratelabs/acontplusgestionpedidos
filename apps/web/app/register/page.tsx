@@ -26,7 +26,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-// Siempre usar ruta relativa para que pase por el proxy de Next.js y respete CSP
 const API_BASE = "/api";
 
 const formSchema = z.object({
@@ -66,48 +65,42 @@ export default function RegisterPage() {
           body: JSON.stringify(values),
           credentials: "include",
         });
-      } catch (fetchError: any) {
-        // Error de red/conexión antes de recibir respuesta
+      } catch (fetchError: unknown) {
         console.error("Error de red al registrar:", fetchError);
-        const errorMsg = fetchError?.message || String(fetchError);
-        
+        const err = fetchError as Error;
+        const errorMsg = err?.message || String(fetchError);
         if (
           errorMsg.includes("Failed to fetch") ||
           errorMsg.includes("NetworkError") ||
           errorMsg.includes("Network request failed") ||
           fetchError instanceof TypeError
         ) {
-          setError("No se pudo conectar con el servidor. Verifica que el servidor esté ejecutándose y que el backend esté disponible en el puerto 3001.");
+          setError("No se pudo conectar con el servidor. Verifica que el backend esté en el puerto 3001.");
           return;
         }
-        
         throw fetchError;
       }
 
-      let data: any = {};
+      let data: Record<string, unknown> = {};
       try {
         const text = await res.text();
-        if (text) {
-          data = JSON.parse(text);
-        }
-      } catch (parseError) {
-        // Si no se puede parsear, usar el status text
+        if (text) data = JSON.parse(text) as Record<string, unknown>;
+      } catch {
         data = { message: res.statusText || `Error ${res.status}` };
       }
 
       if (!res.ok) {
+        const msg = data?.message;
         const message =
-          data?.message ?? 
-          (Array.isArray(data?.message) ? data.message[0] : null) ?? 
-          (data?.error ?? `Error ${res.status}`);
-        throw new Error(message);
+          Array.isArray(msg) ? msg[0] : typeof msg === "string" ? msg : (data?.error as string) ?? `Error ${res.status}`;
+        throw new Error(String(message));
       }
 
       router.push("/login?registered=1");
     } catch (err: unknown) {
       console.error("Error al registrar:", err);
-      if (err instanceof TypeError && err.message === "Failed to fetch") {
-        setError("No se pudo conectar con el servidor. Verifica que el backend esté ejecutándose en el puerto 3001.");
+      if (err instanceof TypeError && (err as Error).message === "Failed to fetch") {
+        setError("No se pudo conectar con el servidor.");
       } else {
         setError(err instanceof Error ? err.message : "Error al crear la cuenta");
       }
@@ -140,12 +133,7 @@ export default function RegisterPage() {
                   <FormItem>
                     <FormLabel>Nombre de la empresa</FormLabel>
                     <FormControl>
-                      <Input 
-                        autoComplete="organization" 
-                        placeholder="Mi Empresa S.A." 
-                        {...field} 
-                        className="bg-white" 
-                      />
+                      <Input autoComplete="organization" placeholder="Mi Empresa S.A." {...field} className="bg-white" />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -158,12 +146,7 @@ export default function RegisterPage() {
                   <FormItem>
                     <FormLabel>RUC / NIT</FormLabel>
                     <FormControl>
-                      <Input 
-                        autoComplete="organization-tax-id" 
-                        placeholder="1234567890001" 
-                        {...field} 
-                        className="bg-white" 
-                      />
+                      <Input autoComplete="organization-tax-id" placeholder="1234567890001" {...field} className="bg-white" />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -176,12 +159,7 @@ export default function RegisterPage() {
                   <FormItem>
                     <FormLabel>Tu nombre completo</FormLabel>
                     <FormControl>
-                      <Input 
-                        autoComplete="name" 
-                        placeholder="Juan Pérez" 
-                        {...field} 
-                        className="bg-white" 
-                      />
+                      <Input autoComplete="name" placeholder="Juan Pérez" {...field} className="bg-white" />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -194,13 +172,7 @@ export default function RegisterPage() {
                   <FormItem>
                     <FormLabel>Correo electrónico</FormLabel>
                     <FormControl>
-                      <Input 
-                        type="email" 
-                        autoComplete="email" 
-                        placeholder="admin@miempresa.com" 
-                        {...field} 
-                        className="bg-white" 
-                      />
+                      <Input type="email" autoComplete="email" placeholder="admin@miempresa.com" {...field} className="bg-white" />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -213,30 +185,18 @@ export default function RegisterPage() {
                   <FormItem>
                     <FormLabel>Contraseña</FormLabel>
                     <FormControl>
-                      <Input 
-                        type="password" 
-                        autoComplete="new-password" 
-                        placeholder="••••••" 
-                        {...field} 
-                        className="bg-white" 
-                      />
+                      <Input type="password" autoComplete="new-password" placeholder="••••••" {...field} className="bg-white" />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
-
               {error && (
                 <div className="p-3 bg-red-50 border border-red-200 text-red-600 rounded-md text-sm text-center font-medium">
                   ⚠️ {error}
                 </div>
               )}
-
-              <Button
-                type="submit"
-                className="w-full bg-slate-900 hover:bg-slate-800 transition-all mt-2"
-                disabled={loading}
-              >
+              <Button type="submit" className="w-full bg-slate-900 hover:bg-slate-800 transition-all mt-2" disabled={loading}>
                 {loading ? "Creando cuenta..." : "Crear cuenta"}
               </Button>
             </form>
