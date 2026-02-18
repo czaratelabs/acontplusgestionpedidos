@@ -43,4 +43,24 @@ export class EstablishmentsService {
     Object.assign(establishment, dto);
     return this.establishmentRepo.save(establishment);
   }
+
+  async remove(id: string): Promise<Establishment> {
+    const establishment = await this.establishmentRepo.findOne({
+      where: { id },
+      relations: ['company'],
+    });
+    if (!establishment) throw new NotFoundException('Establecimiento no encontrado');
+    establishment.isActive = false;
+    return this.establishmentRepo.save(establishment);
+  }
+
+  async activate(id: string): Promise<Establishment> {
+    const establishment = await this.establishmentRepo.findOne({
+      where: { id },
+      relations: ['company'],
+    });
+    if (!establishment) throw new NotFoundException('Establecimiento no encontrado');
+    establishment.isActive = true;
+    return this.establishmentRepo.save(establishment);
+  }
 }

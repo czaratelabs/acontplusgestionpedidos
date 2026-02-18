@@ -58,4 +58,24 @@ export class EmissionPointsService {
     }
     return this.pointRepo.save(point);
   }
+
+  async remove(id: string): Promise<EmissionPoint> {
+    const point = await this.pointRepo.findOne({
+      where: { id },
+      relations: ['establishment', 'establishment.company'],
+    });
+    if (!point) throw new NotFoundException('Punto de emisión no encontrado');
+    point.isActive = false;
+    return this.pointRepo.save(point);
+  }
+
+  async activate(id: string): Promise<EmissionPoint> {
+    const point = await this.pointRepo.findOne({
+      where: { id },
+      relations: ['establishment', 'establishment.company'],
+    });
+    if (!point) throw new NotFoundException('Punto de emisión no encontrado');
+    point.isActive = true;
+    return this.pointRepo.save(point);
+  }
 }

@@ -66,45 +66,56 @@ function getEntityName(entity: object): string {
   return entity.constructor.name;
 }
 
+/** Entity identifier for audit_logs.entity_id (id, or key for SystemSettings, or N/A). */
+function getEntityIdForAudit(entity: Record<string, unknown>): string {
+  const id = entity.id ?? entity.key;
+  if (id != null && id !== undefined) return String(id);
+  return 'N/A';
+}
+
 /** Extract company ID from a single entity (relation object or column ID). */
 function getCompanyIdFromEntry(entry: object | undefined): string | null {
   if (entry == null) return null;
   const e = entry as Record<string, unknown>;
-  
+
   // If it's a Company entity itself, use its ID
   if (e.constructor?.name === 'Company' && e.id) return String(e.id);
-  
-  // Try relation object first (if loaded)
+
+  // Prioritize explicit companyId column (Tax, Contact, SystemSetting, UserCompany, etc.)
+  if (e.companyId != null && e.companyId !== undefined) return String(e.companyId);
+  if (e.company_id != null && e.company_id !== undefined) return String(e.company_id);
+
+  // Try relation object (if loaded)
   const company = e.company as { id?: string } | undefined;
   if (company?.id) return String(company.id);
-  
+
+  // User entity: resolve company from first userCompany (user has many companies)
+  const userCompanies = e.userCompanies as Array<{ companyId?: string; company?: { id?: string } }> | undefined;
+  if (userCompanies && Array.isArray(userCompanies) && userCompanies.length > 0) {
+    const first = userCompanies[0];
+    const cid = first.companyId ?? first.company?.id;
+    if (cid) return String(cid);
+  }
+
   // Try nested relation (e.g., EmissionPoint -> Establishment -> Company)
   const establishment = e.establishment as { company?: { id?: string } } | undefined;
   if (establishment?.company?.id) return String(establishment.company.id);
-  
-  // Try direct column IDs (TypeORM auto-creates companyId for @ManyToOne)
-  // Check both camelCase and snake_case variants
-  if (e.companyId != null && e.companyId !== undefined) return String(e.companyId);
-  if (e.company_id != null && e.company_id !== undefined) return String(e.company_id);
-  
+
   // Last resort: check all properties for company-related keys
-  // TypeORM might store it under different property names
   const keys = Object.keys(e);
   for (const key of keys) {
     if (key.toLowerCase().includes('company') && e[key] != null) {
       const value = e[key];
-      // If it's an object with id, extract it
       if (typeof value === 'object' && value !== null && 'id' in value) {
         const id = (value as { id?: unknown }).id;
         if (id != null) return String(id);
       }
-      // If it's a direct ID value
       if (typeof value === 'string' || typeof value === 'number') {
         return String(value);
       }
     }
   }
-  
+
   return null;
 }
 
@@ -274,16 +285,17 @@ export class AuditSubscriber implements EntitySubscriberInterface {
     const companyId = getCompanyIdFromEntry(entity);
     const performedBy = getPerformedBy(this.logger);
     
+    const entityId = getEntityIdForAudit(entity);
     this.logger.debug(
-      `Creating audit log for INSERT: ${getEntityName(entity)} (id: ${entity.id}, companyId: ${companyId})`
+      `Creating audit log for INSERT: ${getEntityName(entity)} (id: ${entityId}, companyId: ${companyId})`
     );
-    
+
     getTimezoneFromDb(this.dataSource.manager, companyId)
       .then((timeZone) => {
         const repo = this.dataSource.manager.getRepository(AuditLog);
         const log = repo.create({
           entity_name: getEntityName(entity),
-          entity_id: String(entity.id),
+          entity_id: entityId,
           company_id: companyId,
           action: AuditAction.CREATE,
           performed_by: performedBy,
@@ -297,7 +309,7 @@ export class AuditSubscriber implements EntitySubscriberInterface {
       })
       .catch((err) => {
         this.logger.error(
-          `Error creating audit log for INSERT: ${getEntityName(entity)} (id: ${entity.id})`,
+          `Error creating audit log for INSERT: ${getEntityName(entity)} (id: ${entityId})`,
           err?.stack || err
         );
       });
@@ -310,10 +322,11 @@ export class AuditSubscriber implements EntitySubscriberInterface {
     const performedBy = getPerformedBy(this.logger);
     const companyId = resolveCompanyIdForAudit(updatedEntry, originalEntry);
 
+    const entityId = getEntityIdForAudit(updatedEntry);
     if (!companyId) {
       const entityName = getEntityName(updatedEntry);
       this.logger.warn(
-        `Missing company_id for ${entityName} update (id: ${updatedEntry.id})`
+        `Missing company_id for ${entityName} update (id: ${entityId})`
       );
     }
 
@@ -344,7 +357,7 @@ export class AuditSubscriber implements EntitySubscriberInterface {
         const repo = this.dataSource.manager.getRepository(AuditLog);
         const log = repo.create({
           entity_name: getEntityName(updatedEntry),
-          entity_id: String(updatedEntry.id),
+          entity_id: entityId,
           company_id: companyId,
           action: AuditAction.UPDATE,
           performed_by: performedBy,
@@ -355,7 +368,7 @@ export class AuditSubscriber implements EntitySubscriberInterface {
       })
       .catch((err) => {
         this.logger.error(
-          `Error creating audit log for UPDATE: ${getEntityName(updatedEntry)} (id: ${updatedEntry.id})`,
+          `Error creating audit log for UPDATE: ${getEntityName(updatedEntry)} (id: ${entityId})`,
           err?.stack || err
         );
       });
@@ -366,12 +379,13 @@ export class AuditSubscriber implements EntitySubscriberInterface {
     if (!entity || !shouldAudit(entity)) return;
     const companyId = getCompanyIdFromEntry(entity);
     const performedBy = getPerformedBy(this.logger);
+    const entityId = getEntityIdForAudit(entity);
     getTimezoneFromDb(this.dataSource.manager, companyId)
       .then((timeZone) => {
         const repo = this.dataSource.manager.getRepository(AuditLog);
         const log = repo.create({
           entity_name: getEntityName(entity),
-          entity_id: String(entity.id),
+          entity_id: entityId,
           company_id: companyId,
           action: AuditAction.DELETE,
           performed_by: performedBy,
@@ -382,7 +396,7 @@ export class AuditSubscriber implements EntitySubscriberInterface {
       })
       .catch((err) => {
         this.logger.error(
-          `Error creating audit log for DELETE: ${getEntityName(entity)} (id: ${entity.id})`,
+          `Error creating audit log for DELETE: ${getEntityName(entity)} (id: ${entityId})`,
           err?.stack || err
         );
       });

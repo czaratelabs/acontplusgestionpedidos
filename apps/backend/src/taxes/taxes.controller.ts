@@ -22,6 +22,11 @@ export class TaxesController {
     return this.taxesService.findOne(id);
   }
 
+  @Patch(':id/activate')
+  activate(@Param('id') id: string) {
+    return this.taxesService.activate(id);
+  }
+
   @Patch(':id')
   update(@Param('id') id: string, @Body() dto: UpdateTaxDto) {
     return this.taxesService.update(id, dto);

@@ -37,6 +37,12 @@ export class RolesController {
     return this.service.create(dto);
   }
 
+  @Patch(':id/activate')
+  @UseGuards(AdminGuard)
+  activate(@Param('id') id: string) {
+    return this.service.activate(id);
+  }
+
   @Patch(':id')
   @UseGuards(AdminGuard)
   update(@Param('id') id: string, @Body() dto: UpdateRoleDto) {

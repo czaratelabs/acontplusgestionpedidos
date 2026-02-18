@@ -16,7 +16,6 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/use-toast";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
@@ -25,7 +24,6 @@ const formSchema = z.object({
   name: z.string().min(1, "El nombre es requerido"),
   percentage: z.coerce.number().min(0, "Mínimo 0").max(100, "Máximo 100"),
   code: z.string().min(1, "El código SRI es requerido para facturación electrónica"),
-  is_active: z.boolean(),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -35,7 +33,6 @@ export type TaxForDialog = {
   name: string;
   percentage: number;
   code: string | null;
-  is_active: boolean;
 };
 
 type TaxDialogProps = {
@@ -62,8 +59,6 @@ export function TaxDialog({
     register,
     handleSubmit,
     reset,
-    setValue,
-    watch,
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -71,11 +66,8 @@ export function TaxDialog({
       name: "",
       percentage: 0,
       code: "",
-      is_active: true,
     },
   });
-
-  const isActive = watch("is_active");
 
   useEffect(() => {
     if (open && initialData) {
@@ -83,14 +75,12 @@ export function TaxDialog({
         name: initialData.name ?? "",
         percentage: Number(initialData.percentage) ?? 0,
         code: initialData.code ?? "",
-        is_active: initialData.is_active ?? true,
       });
     } else if (open && !initialData) {
       reset({
         name: "",
         percentage: 0,
         code: "",
-        is_active: true,
       });
     }
   }, [open, initialData, reset]);
@@ -102,7 +92,6 @@ export function TaxDialog({
         name: values.name.trim(),
         percentage: Number(values.percentage),
         code: values.code.trim(),
-        is_active: values.is_active,
       };
 
       const url = initialData
@@ -185,20 +174,6 @@ export function TaxDialog({
             {errors.code && (
               <p className="text-red-500 text-xs">{errors.code.message}</p>
             )}
-          </div>
-
-          <div className="flex items-center justify-between rounded-lg border p-4">
-            <div>
-              <Label htmlFor="tax-active">Activo</Label>
-              <p className="text-sm text-slate-500">
-                Los impuestos inactivos no se mostrarán en facturación.
-              </p>
-            </div>
-            <Switch
-              id="tax-active"
-              checked={isActive}
-              onCheckedChange={(v) => setValue("is_active", v)}
-            />
           </div>
 
           <DialogFooter>

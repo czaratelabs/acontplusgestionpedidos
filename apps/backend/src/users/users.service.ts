@@ -104,7 +104,7 @@ export class UsersService {
   async update(id: string, dto: UpdateUserDto): Promise<User> {
     const user = await this.userRepository.findOne({
       where: { id },
-      relations: ['userCompanies'],
+      relations: ['userCompanies', 'userCompanies.company'],
     });
     if (!user) throw new NotFoundException('Usuario no encontrado');
 
@@ -120,7 +120,26 @@ export class UsersService {
       user.password_hash = await bcrypt.hash(dto.password.trim(), salt);
     }
 
-    return this.userRepository.save(user);
+    await this.userRepository.save(user);
+
+    if (dto.role != null && dto.role !== '' && dto.companyId != null && dto.companyId !== '') {
+      const companyIdTrim = dto.companyId.trim();
+      const roleName = String(dto.role).trim().toLowerCase();
+      const userCompany = await this.userCompanyRepository.findOne({
+        where: { userId: id, companyId: companyIdTrim, isActive: true },
+      });
+      if (userCompany) {
+        const role = await this.rolesService.findByNameForCompany(roleName, companyIdTrim);
+        userCompany.roleId = role.id;
+        userCompany.role = role;
+        await this.userCompanyRepository.save(userCompany);
+      }
+    }
+
+    return this.userRepository.findOne({
+      where: { id },
+      relations: ['userCompanies', 'userCompanies.company', 'userCompanies.role'],
+    }) as Promise<User>;
   }
 
   /**

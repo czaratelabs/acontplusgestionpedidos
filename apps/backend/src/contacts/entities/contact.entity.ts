@@ -3,6 +3,7 @@ import {
   Column,
   PrimaryGeneratedColumn,
   ManyToOne,
+  JoinColumn,
   CreateDateColumn,
   UpdateDateColumn,
 } from 'typeorm';
@@ -58,8 +59,17 @@ export class Contact {
   @Column({ type: 'decimal', precision: 14, scale: 2, nullable: true })
   salary: string | null;
 
+  @Column({ name: 'is_active', type: 'boolean', default: true })
+  isActive: boolean;
+
   @ManyToOne(() => Company, (company) => company.contacts)
+  @JoinColumn({ name: 'company_id' })
   company: Company;
+
+  /** Resuelve company_id para audit/subscribers y lecturas sin cargar la relación. */
+  get companyId(): string | undefined {
+    return this.company?.id;
+  }
 
   @CreateDateColumn({ name: 'created_at' })
   created_at: Date;

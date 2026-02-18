@@ -40,15 +40,23 @@ export class TaxesService {
   }
 
   async update(id: string, dto: UpdateTaxDto): Promise<Tax> {
-    const tax = await this.taxRepo.findOneBy({ id });
+    const tax = await this.taxRepo.findOne({ where: { id }, relations: ['company'] });
     if (!tax) throw new NotFoundException('Impuesto no encontrado');
     Object.assign(tax, dto);
     return this.taxRepo.save(tax);
   }
 
-  async remove(id: string): Promise<void> {
-    const tax = await this.taxRepo.findOneBy({ id });
+  async remove(id: string): Promise<Tax> {
+    const tax = await this.taxRepo.findOne({ where: { id }, relations: ['company'] });
     if (!tax) throw new NotFoundException('Impuesto no encontrado');
-    await this.taxRepo.remove(tax);
+    tax.is_active = false;
+    return this.taxRepo.save(tax);
+  }
+
+  async activate(id: string): Promise<Tax> {
+    const tax = await this.taxRepo.findOne({ where: { id }, relations: ['company'] });
+    if (!tax) throw new NotFoundException('Impuesto no encontrado');
+    tax.is_active = true;
+    return this.taxRepo.save(tax);
   }
 }

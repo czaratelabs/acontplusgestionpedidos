@@ -19,10 +19,7 @@ export class RolesService {
   async findAll(companyId?: string | null): Promise<Role[]> {
     if (companyId) {
       return this.roleRepository.find({
-        where: [
-          { companyId: IsNull(), isActive: true },
-          { companyId, isActive: true },
-        ],
+        where: [{ companyId: IsNull() }, { companyId }],
         order: { name: 'ASC' },
       });
     }
@@ -71,9 +68,16 @@ export class RolesService {
     return this.roleRepository.save(role);
   }
 
-  async remove(id: string): Promise<void> {
+  async remove(id: string): Promise<Role> {
     const role = await this.findOne(id);
-    await this.roleRepository.remove(role);
+    role.isActive = false;
+    return this.roleRepository.save(role);
+  }
+
+  async activate(id: string): Promise<Role> {
+    const role = await this.findOne(id);
+    role.isActive = true;
+    return this.roleRepository.save(role);
   }
 
   private async assertNameUnique(

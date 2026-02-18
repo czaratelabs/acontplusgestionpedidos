@@ -5,12 +5,13 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useRouter } from "next/navigation";
-import { Pencil } from "lucide-react";
+import { Pencil, Ban, CheckCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
 
 const sequenceSchema = z.object({
@@ -31,6 +32,7 @@ type EmissionPoint = {
   id: string;
   code: string;
   name: string;
+  isActive: boolean;
   invoice_sequence: number;
   proforma_sequence?: number;
   order_sequence?: number;
@@ -58,8 +60,23 @@ export default function EmissionPointsPage({
   const [open, setOpen] = useState(false);
   const [editingPoint, setEditingPoint] = useState<EmissionPoint | null>(null);
   const [loading, setLoading] = useState(false);
+  const [inactivateTarget, setInactivateTarget] = useState<EmissionPoint | null>(null);
+  const [inactivating, setInactivating] = useState(false);
+  const [activatingId, setActivatingId] = useState<string | null>(null);
   const router = useRouter();
   const { toast } = useToast();
+
+  async function refetchPoints() {
+    try {
+      const res = await fetch(`${API_BASE}/emission-points/establishment/${establishmentId}`, {
+        credentials: "include",
+      });
+      const data = res.ok ? await res.json() : [];
+      setPoints(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error(err);
+    }
+  }
 
   const { register, handleSubmit, formState: { errors }, reset } = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -153,6 +170,62 @@ export default function EmissionPointsPage({
   function openEditDialog(point: EmissionPoint) {
     setEditingPoint(point);
     setOpen(true);
+  }
+
+  async function handleInactivate() {
+    if (!inactivateTarget) return;
+    setInactivating(true);
+    try {
+      const res = await fetch(`${API_BASE}/emission-points/${inactivateTarget.id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || "Error al inactivar");
+      setInactivateTarget(null);
+      await refetchPoints();
+      router.refresh();
+      toast({
+        title: "Éxito",
+        description: "Punto de emisión inactivado correctamente.",
+        variant: "default",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "No se pudo inactivar el punto de emisión.",
+        variant: "destructive",
+      });
+    } finally {
+      setInactivating(false);
+    }
+  }
+
+  async function handleActivate(point: EmissionPoint) {
+    setActivatingId(point.id);
+    try {
+      const res = await fetch(`${API_BASE}/emission-points/${point.id}/activate`, {
+        method: "PATCH",
+        credentials: "include",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || "Error al activar");
+      await refetchPoints();
+      router.refresh();
+      toast({
+        title: "Éxito",
+        description: "Punto de emisión activado correctamente.",
+        variant: "default",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "No se pudo activar el punto de emisión.",
+        variant: "destructive",
+      });
+    } finally {
+      setActivatingId(null);
+    }
   }
 
   return (
@@ -266,29 +339,84 @@ export default function EmissionPointsPage({
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
-        {(Array.isArray(points) ? points : []).map((point) => (
-          <Card key={point.id}>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-lg">{point.code}</CardTitle>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                aria-label="Editar punto de emisión"
-                onClick={() => openEditDialog(point)}
-              >
-                <Pencil className="h-4 w-4" />
-              </Button>
-            </CardHeader>
-            <CardContent>
-              <p className="font-medium">{point.name}</p>
-              <p className="text-sm text-slate-500">
-                Secuencia Factura: {point.invoice_sequence ?? 1}
-              </p>
-            </CardContent>
-          </Card>
-        ))}
+        {(Array.isArray(points) ? points : []).map((point) => {
+          const isActive = point.isActive !== false;
+          return (
+            <Card key={point.id}>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-lg">{point.code}</CardTitle>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    aria-label="Editar punto de emisión"
+                    onClick={() => openEditDialog(point)}
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                  <Badge
+                    className={
+                      isActive
+                        ? "bg-green-100 text-green-800 hover:bg-green-200"
+                        : "bg-red-500 text-white hover:bg-red-600"
+                    }
+                  >
+                    {isActive ? "Activo" : "Inactivo"}
+                  </Badge>
+                  {isActive ? (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50"
+                      aria-label="Inactivar punto de emisión"
+                      onClick={() => setInactivateTarget(point)}
+                    >
+                      <Ban className="h-4 w-4" />
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50"
+                      aria-label="Activar punto de emisión"
+                      disabled={activatingId === point.id}
+                      onClick={() => handleActivate(point)}
+                    >
+                      <CheckCircle className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent>
+                <p className="font-medium">{point.name}</p>
+                <p className="text-sm text-slate-500">
+                  Secuencia Factura: {point.invoice_sequence ?? 1}
+                </p>
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
+
+      <Dialog open={!!inactivateTarget} onOpenChange={() => setInactivateTarget(null)}>
+        <DialogContent className="sm:max-w-[425px]" aria-describedby={undefined}>
+          <DialogHeader>
+            <DialogTitle>¿Inactivar punto de emisión?</DialogTitle>
+            <p className="text-sm text-slate-600">
+              ¿Estás seguro de inactivar esta caja? No se eliminará; podrás activarla de nuevo cuando lo necesites.
+            </p>
+          </DialogHeader>
+          <div className="flex justify-end gap-2 pt-4">
+            <Button variant="outline" onClick={() => setInactivateTarget(null)}>
+              Cancelar
+            </Button>
+            <Button variant="destructive" onClick={handleInactivate} disabled={inactivating}>
+              {inactivating ? "Inactivando..." : "Inactivar"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -116,7 +116,7 @@ export function UserDialog({ companyId, initialData = null, open: controlledOpen
       }
 
       const url = initialData
-        ? `${API_BASE}/users/${initialData.id}`
+        ? `${API_BASE}/users/company/${companyId}/user/${initialData.id}`
         : `${API_BASE}/users/company/${companyId}`;
       const method = initialData ? "PATCH" : "POST";
 

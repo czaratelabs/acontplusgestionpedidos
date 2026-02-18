@@ -3,6 +3,7 @@ import {
   PrimaryGeneratedColumn,
   Column,
   ManyToOne,
+  JoinColumn,
   CreateDateColumn,
   UpdateDateColumn,
 } from 'typeorm';
@@ -26,6 +27,7 @@ export class Tax {
   is_active: boolean;
 
   @ManyToOne(() => Company, (company) => company.taxes, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'company_id' })
   company: Company;
 
   @CreateDateColumn({ name: 'created_at' })

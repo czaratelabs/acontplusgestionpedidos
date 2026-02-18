@@ -19,6 +19,9 @@ export class Warehouse {
   @Column({ type: 'text', nullable: true })
   description: string | null;
 
+  @Column({ name: 'is_active', type: 'boolean', default: true })
+  isActive: boolean;
+
   @ManyToOne(() => Establishment, (establishment) => establishment.warehouses)
   establishment: Establishment;
 

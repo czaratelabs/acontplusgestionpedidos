@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
 import { EmissionPointsService } from './emission-points.service';
 import { CreateEmissionPointDto } from './dto/create-emission-point.dto';
 import { UpdateEmissionPointDto } from './dto/update-emission-point.dto';
@@ -17,8 +17,18 @@ export class EmissionPointsController {
     return this.emissionPointsService.findAllByEstablishment(establishmentId);
   }
 
+  @Patch(':id/activate')
+  activate(@Param('id') id: string) {
+    return this.emissionPointsService.activate(id);
+  }
+
   @Patch(':id')
   update(@Param('id') id: string, @Body() dto: UpdateEmissionPointDto) {
     return this.emissionPointsService.update(id, dto);
+  }
+
+  @Delete(':id')
+  remove(@Param('id') id: string) {
+    return this.emissionPointsService.remove(id);
   }
 }

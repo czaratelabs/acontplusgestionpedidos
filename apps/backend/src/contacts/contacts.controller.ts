@@ -52,6 +52,11 @@ export class ContactsController {
     return this.contactsService.findOne(id);
   }
 
+  @Patch(':id/activate')
+  activate(@Param('id') id: string) {
+    return this.contactsService.activate(id);
+  }
+
   @Patch(':id')
   update(@Param('id') id: string, @Body() dto: UpdateContactDto) {
     return this.contactsService.update(id, dto);

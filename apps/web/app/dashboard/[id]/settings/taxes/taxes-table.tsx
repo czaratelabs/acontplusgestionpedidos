@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Pencil, Trash2 } from "lucide-react";
+import { Pencil, Ban, CheckCircle } from "lucide-react";
 import { TaxDialog, type TaxForDialog } from "./tax-dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -46,8 +46,9 @@ export function TaxesTable({
 }: TaxesTableProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingTax, setEditingTax] = useState<TaxForDialog | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<TaxRow | null>(null);
-  const [deleting, setDeleting] = useState(false);
+  const [inactivateTarget, setInactivateTarget] = useState<TaxRow | null>(null);
+  const [inactivating, setInactivating] = useState(false);
+  const [activatingId, setActivatingId] = useState<string | null>(null);
   const { toast } = useToast();
 
   function openNewDialog() {
@@ -61,7 +62,6 @@ export function TaxesTable({
       name: tax.name,
       percentage: tax.percentage,
       code: tax.code,
-      is_active: tax.is_active,
     });
     setDialogOpen(true);
   }
@@ -71,31 +71,57 @@ export function TaxesTable({
     if (!open) setEditingTax(null);
   }
 
-  async function handleDelete() {
-    if (!deleteTarget) return;
-    setDeleting(true);
+  async function handleInactivate() {
+    if (!inactivateTarget) return;
+    setInactivating(true);
     try {
-      const res = await fetch(`${API_BASE}/taxes/${deleteTarget.id}`, {
+      const res = await fetch(`${API_BASE}/taxes/${inactivateTarget.id}`, {
         method: "DELETE",
         credentials: "include",
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.message || "Error al eliminar");
-      setDeleteTarget(null);
+      if (!res.ok) throw new Error(data.message || "Error al inactivar");
+      setInactivateTarget(null);
       onRefresh();
       toast({
         title: "Éxito",
-        description: "Impuesto eliminado correctamente.",
+        description: "Impuesto inactivado correctamente.",
         variant: "default",
       });
     } catch (error) {
       toast({
         title: "Error",
-        description: error instanceof Error ? error.message : "No se pudo eliminar el impuesto.",
+        description: error instanceof Error ? error.message : "No se pudo inactivar el impuesto.",
         variant: "destructive",
       });
     } finally {
-      setDeleting(false);
+      setInactivating(false);
+    }
+  }
+
+  async function handleActivate(tax: TaxRow) {
+    setActivatingId(tax.id);
+    try {
+      const res = await fetch(`${API_BASE}/taxes/${tax.id}/activate`, {
+        method: "PATCH",
+        credentials: "include",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || "Error al activar");
+      onRefresh();
+      toast({
+        title: "Éxito",
+        description: "Impuesto activado correctamente.",
+        variant: "default",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "No se pudo activar el impuesto.",
+        variant: "destructive",
+      });
+    } finally {
+      setActivatingId(null);
     }
   }
 
@@ -136,7 +162,13 @@ export function TaxesTable({
                   <TableCell>{Number(tax.percentage).toFixed(2)}%</TableCell>
                   <TableCell className="text-slate-600">{tax.code || "—"}</TableCell>
                   <TableCell>
-                    <Badge variant={tax.is_active ? "default" : "secondary"}>
+                    <Badge
+                      className={
+                        tax.is_active
+                          ? "bg-green-100 text-green-800 hover:bg-green-200"
+                          : "bg-red-500 text-white hover:bg-red-600"
+                      }
+                    >
                       {tax.is_active ? "Activo" : "Inactivo"}
                     </Badge>
                   </TableCell>
@@ -151,15 +183,28 @@ export function TaxesTable({
                       >
                         <Pencil className="h-4 w-4" />
                       </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50"
-                        aria-label="Eliminar impuesto"
-                        onClick={() => setDeleteTarget(tax)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      {tax.is_active ? (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50"
+                          aria-label="Inactivar impuesto"
+                          onClick={() => setInactivateTarget(tax)}
+                        >
+                          <Ban className="h-4 w-4" />
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50"
+                          aria-label="Activar impuesto"
+                          disabled={activatingId === tax.id}
+                          onClick={() => handleActivate(tax)}
+                        >
+                          <CheckCircle className="h-4 w-4" />
+                        </Button>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>
@@ -177,27 +222,26 @@ export function TaxesTable({
         onSuccess={onRefresh}
       />
 
-      <Dialog open={!!deleteTarget} onOpenChange={() => setDeleteTarget(null)}>
+      <Dialog open={!!inactivateTarget} onOpenChange={() => setInactivateTarget(null)}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
-            <DialogTitle>¿Eliminar impuesto?</DialogTitle>
+            <DialogTitle>¿Inactivar impuesto?</DialogTitle>
             <DialogDescription>
-              {deleteTarget
-                ? `Se eliminará "${deleteTarget.name}". Esta acción no se puede deshacer.`
-                : ""}{" "}
-              Si el impuesto está asociado a facturas o productos, podría afectar los datos existentes.
+              {inactivateTarget
+                ? `¿Estás seguro de inactivar este impuesto? No se podrá usar en nuevas transacciones.`
+                : ""}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteTarget(null)}>
+            <Button variant="outline" onClick={() => setInactivateTarget(null)}>
               Cancelar
             </Button>
             <Button
               variant="destructive"
-              onClick={handleDelete}
-              disabled={deleting}
+              onClick={handleInactivate}
+              disabled={inactivating}
             >
-              {deleting ? "Eliminando..." : "Eliminar"}
+              {inactivating ? "Inactivando..." : "Inactivar"}
             </Button>
           </DialogFooter>
         </DialogContent>

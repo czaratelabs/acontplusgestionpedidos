@@ -54,6 +54,16 @@ export class UsersController {
     return { message: 'Usuario removido de la empresa correctamente' };
   }
 
+  @Patch('company/:companyId/user/:userId')
+  @UseGuards(AdminGuard)
+  updateUserInCompany(
+    @Param('companyId') companyId: string,
+    @Param('userId') userId: string,
+    @Body() dto: UpdateUserDto,
+  ) {
+    return this.usersService.update(userId, { ...dto, companyId });
+  }
+
   @Patch(':id')
   @UseGuards(AdminGuard)
   update(@Param('id') id: string, @Body() dto: UpdateUserDto) {

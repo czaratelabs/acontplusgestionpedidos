@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Pencil, Trash2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Pencil, Ban, CheckCircle } from "lucide-react";
 import { ContactDialog, type ContactForDialog } from "./contact-dialog";
 import { Button } from "@/components/ui/button";
 import {
@@ -12,6 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "/api";
@@ -26,6 +28,7 @@ export type ContactRow = {
   email: string | null;
   phone: string | null;
   address: string | null;
+  isActive: boolean;
   isClient: boolean;
   isSupplier: boolean;
   isEmployee?: boolean;
@@ -43,7 +46,9 @@ export function ContactList({ companyId, type }: ContactListProps) {
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingContact, setEditingContact] = useState<ContactForDialog | null>(null);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [inactivatingId, setInactivatingId] = useState<string | null>(null);
+  const [activatingId, setActivatingId] = useState<string | null>(null);
+  const router = useRouter();
   const { toast } = useToast();
   const toastRef = useRef(toast);
   const hasShownConnectionError = useRef(false);
@@ -125,11 +130,11 @@ export function ContactList({ companyId, type }: ContactListProps) {
     if (!open) setEditingContact(null);
   }
 
-  async function handleDelete(contact: ContactRow) {
-    if (!confirm(`¿Eliminar a "${contact.name}"? Esta acción no se puede deshacer.`)) {
+  async function handleInactivate(contact: ContactRow) {
+    if (!confirm(`¿Inactivar a "${contact.name}"? El contacto no se eliminará y podrás activarlo de nuevo desde la lista.`)) {
       return;
     }
-    setDeletingId(contact.id);
+    setInactivatingId(contact.id);
     try {
       const res = await fetch(`${API_BASE}/contacts/${contact.id}`, {
         method: "DELETE",
@@ -137,23 +142,54 @@ export function ContactList({ companyId, type }: ContactListProps) {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.message || "Error al eliminar");
+        throw new Error(data.message || "Error al inactivar");
       }
       toast({
-        title: "Eliminado",
-        description: "Contacto eliminado correctamente.",
+        title: "Inactivado",
+        description: "Contacto inactivado correctamente.",
         variant: "default",
       });
-      fetchContacts();
+      await fetchContacts();
+      router.refresh();
     } catch (error) {
       console.error(error);
       toast({
         title: "Error",
-        description: error instanceof Error ? error.message : "No se pudo eliminar.",
+        description: error instanceof Error ? error.message : "No se pudo inactivar.",
         variant: "destructive",
       });
     } finally {
-      setDeletingId(null);
+      setInactivatingId(null);
+    }
+  }
+
+  async function handleActivate(contact: ContactRow) {
+    setActivatingId(contact.id);
+    try {
+      const res = await fetch(`${API_BASE}/contacts/${contact.id}/activate`, {
+        method: "PATCH",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.message || "Error al activar");
+      }
+      toast({
+        title: "Activado",
+        description: "Contacto activado correctamente.",
+        variant: "default",
+      });
+      await fetchContacts();
+      router.refresh();
+    } catch (error) {
+      console.error(error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "No se pudo activar.",
+        variant: "destructive",
+      });
+    } finally {
+      setActivatingId(null);
     }
   }
 
@@ -204,19 +240,20 @@ export function ContactList({ companyId, type }: ContactListProps) {
               <TableHead>Email</TableHead>
               <TableHead>Teléfono</TableHead>
               <TableHead>Dirección</TableHead>
+              <TableHead>Estado</TableHead>
               <TableHead className="text-right">Acciones</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={isEmployee ? 7 : 6} className="h-24 text-center text-slate-500">
+                <TableCell colSpan={isEmployee ? 8 : 7} className="h-24 text-center text-slate-500">
                   Cargando…
                 </TableCell>
               </TableRow>
             ) : contacts.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={isEmployee ? 7 : 6} className="h-24 text-center text-slate-500">
+                <TableCell colSpan={isEmployee ? 8 : 7} className="h-24 text-center text-slate-500">
                   No hay contactos. Usa &quot;{newButtonLabel}&quot; para agregar uno.
                 </TableCell>
               </TableRow>
@@ -250,6 +287,17 @@ export function ContactList({ companyId, type }: ContactListProps) {
                       ? contact.address
                       : "—"}
                   </TableCell>
+                  <TableCell>
+                    <Badge
+                      className={
+                        contact.isActive !== false
+                          ? "bg-green-100 text-green-800 hover:bg-green-200"
+                          : "bg-red-500 text-white hover:bg-red-600"
+                      }
+                    >
+                      {contact.isActive !== false ? "Activo" : "Inactivo"}
+                    </Badge>
+                  </TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-1">
                       <Button
@@ -261,16 +309,29 @@ export function ContactList({ companyId, type }: ContactListProps) {
                       >
                         <Pencil className="h-4 w-4" />
                       </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-slate-400 hover:text-red-600"
-                        aria-label="Eliminar"
-                        disabled={deletingId === contact.id}
-                        onClick={() => handleDelete(contact)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      {contact.isActive !== false ? (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50"
+                          aria-label="Inactivar"
+                          disabled={inactivatingId === contact.id}
+                          onClick={() => handleInactivate(contact)}
+                        >
+                          <Ban className="h-4 w-4" />
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50"
+                          aria-label="Activar"
+                          disabled={activatingId === contact.id}
+                          onClick={() => handleActivate(contact)}
+                        >
+                          <CheckCircle className="h-4 w-4" />
+                        </Button>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>

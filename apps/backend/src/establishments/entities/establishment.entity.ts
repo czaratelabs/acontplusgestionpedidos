@@ -23,6 +23,9 @@ export class Establishment {
   @Column({ length: 3, default: '001' })
   series: string; 
 
+  @Column({ type: 'boolean', default: true, name: 'is_active' })
+  isActive: boolean;
+
   @Column({ nullable: true })
   logo_url: string;
 

@@ -59,7 +59,7 @@ export class ContactsService {
     const existing = await this.contactRepo
       .createQueryBuilder('contact')
       .leftJoinAndSelect('contact.company', 'company')
-      .where('contact.companyId = :companyId', { companyId })
+      .where('company.id = :companyId', { companyId })
       .andWhere('contact.taxId IN (:...candidates)', { candidates })
       .getOne();
 
@@ -168,7 +168,8 @@ export class ContactsService {
 
     const qb = this.contactRepo
       .createQueryBuilder('contact')
-      .where('contact.companyId = :companyId', { companyId })
+      .innerJoin('contact.company', 'company')
+      .where('company.id = :companyId', { companyId })
       .andWhere(
         new Brackets((qbOr) => {
           qbOr
@@ -286,9 +287,23 @@ export class ContactsService {
     return this.contactRepo.save(contact);
   }
 
-  async remove(id: string): Promise<void> {
-    const contact = await this.contactRepo.findOneBy({ id });
+  async remove(id: string): Promise<Contact> {
+    const contact = await this.contactRepo.findOne({
+      where: { id },
+      relations: ['company'],
+    });
     if (!contact) throw new NotFoundException('Contacto no encontrado');
-    await this.contactRepo.remove(contact);
+    contact.isActive = false;
+    return this.contactRepo.save(contact);
+  }
+
+  async activate(id: string): Promise<Contact> {
+    const contact = await this.contactRepo.findOne({
+      where: { id },
+      relations: ['company'],
+    });
+    if (!contact) throw new NotFoundException('Contacto no encontrado');
+    contact.isActive = true;
+    return this.contactRepo.save(contact);
   }
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Pencil, Trash2 } from "lucide-react";
+import { Pencil, Ban, CheckCircle } from "lucide-react";
 import { RoleDialog, type RoleForDialog } from "./role-dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -46,8 +46,9 @@ export function RolesTableClient({
 }: RolesTableClientProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingRole, setEditingRole] = useState<RoleForDialog | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<RoleRow | null>(null);
-  const [deleting, setDeleting] = useState(false);
+  const [inactivateTarget, setInactivateTarget] = useState<RoleRow | null>(null);
+  const [inactivating, setInactivating] = useState(false);
+  const [activatingId, setActivatingId] = useState<string | null>(null);
   const { toast } = useToast();
 
   function openNewDialog() {
@@ -70,37 +71,75 @@ export function RolesTableClient({
     if (!open) setEditingRole(null);
   }
 
-  async function handleDelete() {
-    if (!deleteTarget) return;
-    setDeleting(true);
+  async function handleInactivate() {
+    if (!inactivateTarget) return;
+    setInactivating(true);
     try {
-      const res = await fetch(`${API_BASE}/roles/${deleteTarget.id}`, {
+      const res = await fetch(`${API_BASE}/roles/${inactivateTarget.id}`, {
         method: "DELETE",
         credentials: "include",
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.message || "Error al eliminar");
-      setDeleteTarget(null);
+      if (!res.ok) throw new Error(data.message || "Error al inactivar");
+      setInactivateTarget(null);
       onRefresh();
       toast({
         title: "Éxito",
-        description: "Rol eliminado correctamente.",
+        description: "Rol inactivado correctamente.",
         variant: "default",
       });
     } catch (error) {
       toast({
         title: "Error",
-        description: error instanceof Error ? error.message : "No se pudo eliminar el rol.",
+        description: error instanceof Error ? error.message : "No se pudo inactivar el rol.",
         variant: "destructive",
       });
     } finally {
-      setDeleting(false);
+      setInactivating(false);
     }
   }
 
   const systemRoles = ["owner", "admin", "seller"];
-  const canDelete = (role: RoleRow) =>
-    role.companyId != null || !systemRoles.includes(role.name.toLowerCase());
+  const canInactivate = (role: RoleRow) =>
+    role.isActive &&
+    (role.companyId != null || !systemRoles.includes(role.name.toLowerCase()));
+  const canActivate = (role: RoleRow) =>
+    !role.isActive &&
+    (role.companyId != null || !systemRoles.includes(role.name.toLowerCase()));
+
+  function handleToggleStatus(role: RoleRow) {
+    if (role.isActive) {
+      setInactivateTarget(role);
+    } else {
+      handleActivate(role);
+    }
+  }
+
+  async function handleActivate(role: RoleRow) {
+    setActivatingId(role.id);
+    try {
+      const res = await fetch(`${API_BASE}/roles/${role.id}/activate`, {
+        method: "PATCH",
+        credentials: "include",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || "Error al activar");
+      onRefresh();
+      toast({
+        title: "Éxito",
+        description: "Rol activado correctamente.",
+        variant: "default",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "No se pudo activar el rol.",
+        variant: "destructive",
+      });
+    } finally {
+      setActivatingId(null);
+    }
+  }
 
   return (
     <>
@@ -139,7 +178,13 @@ export function RolesTableClient({
                     {role.description || "—"}
                   </TableCell>
                   <TableCell>
-                    <Badge variant={role.isActive ? "default" : "secondary"}>
+                    <Badge
+                      className={
+                        role.isActive
+                          ? "bg-green-100 text-green-800 hover:bg-green-200"
+                          : "bg-red-500 text-white hover:bg-red-600"
+                      }
+                    >
                       {role.isActive ? "Activo" : "Inactivo"}
                     </Badge>
                   </TableCell>
@@ -153,15 +198,27 @@ export function RolesTableClient({
                       >
                         <Pencil className="h-4 w-4" />
                       </Button>
-                      {canDelete(role) && (
+                      {canInactivate(role) && (
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => setDeleteTarget(role)}
-                          aria-label="Eliminar"
-                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                          onClick={() => handleToggleStatus(role)}
+                          aria-label="Inactivar"
+                          className="text-amber-600 hover:text-amber-700 hover:bg-amber-50"
                         >
-                          <Trash2 className="h-4 w-4" />
+                          <Ban className="h-4 w-4" />
+                        </Button>
+                      )}
+                      {canActivate(role) && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleToggleStatus(role)}
+                          aria-label="Activar"
+                          disabled={activatingId === role.id}
+                          className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                        >
+                          <CheckCircle className="h-4 w-4" />
                         </Button>
                       )}
                     </div>
@@ -181,25 +238,26 @@ export function RolesTableClient({
         onSuccess={onRefresh}
       />
 
-      <Dialog open={!!deleteTarget} onOpenChange={() => setDeleteTarget(null)}>
+      <Dialog open={!!inactivateTarget} onOpenChange={() => setInactivateTarget(null)}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
-            <DialogTitle>¿Eliminar rol?</DialogTitle>
+            <DialogTitle>¿Inactivar rol?</DialogTitle>
             <DialogDescription>
-              Esta acción no se puede deshacer. Si el rol está asignado a usuarios,
-              deberás reasignarlos a otro rol antes de poder eliminarlo.
+              El rol pasará a estado inactivo y no podrá ser asignado a nuevos
+              usuarios. Los usuarios actuales podrían perder acceso si se filtra
+              por roles activos.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteTarget(null)}>
+            <Button variant="outline" onClick={() => setInactivateTarget(null)}>
               Cancelar
             </Button>
             <Button
-              variant="destructive"
-              onClick={handleDelete}
-              disabled={deleting}
+              variant="default"
+              onClick={handleInactivate}
+              disabled={inactivating}
             >
-              {deleting ? "Eliminando..." : "Eliminar"}
+              {inactivating ? "Inactivando..." : "Inactivar"}
             </Button>
           </DialogFooter>
         </DialogContent>

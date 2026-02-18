@@ -48,4 +48,24 @@ export class WarehousesService {
     if (dto.description !== undefined) warehouse.description = dto.description ?? null;
     return this.warehouseRepo.save(warehouse);
   }
+
+  async remove(id: string): Promise<Warehouse> {
+    const warehouse = await this.warehouseRepo.findOne({
+      where: { id },
+      relations: ['establishment', 'establishment.company'],
+    });
+    if (!warehouse) throw new NotFoundException('Almacén no encontrado');
+    warehouse.isActive = false;
+    return this.warehouseRepo.save(warehouse);
+  }
+
+  async activate(id: string): Promise<Warehouse> {
+    const warehouse = await this.warehouseRepo.findOne({
+      where: { id },
+      relations: ['establishment', 'establishment.company'],
+    });
+    if (!warehouse) throw new NotFoundException('Almacén no encontrado');
+    warehouse.isActive = true;
+    return this.warehouseRepo.save(warehouse);
+  }
 }

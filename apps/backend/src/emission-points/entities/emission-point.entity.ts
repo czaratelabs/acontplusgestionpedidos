@@ -27,6 +27,9 @@ export class EmissionPoint {
   @Column({ default: 1 })
   dispatch_sequence: number; // Despacho de Bodega
 
+  @Column({ type: 'boolean', default: true, name: 'is_active' })
+  isActive: boolean;
+
   // Relación: Muchos puntos pertenecen a UN establecimiento
   @ManyToOne(() => Establishment, (establishment) => establishment.emissionPoints)
   establishment: Establishment;
