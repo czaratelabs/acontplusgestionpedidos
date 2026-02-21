@@ -45,6 +45,13 @@ type Role = {
   description: string | null;
 };
 
+/** Roles por defecto cuando el módulo admin_roles no está habilitado en el plan */
+const FALLBACK_ROLES: Role[] = [
+  { id: "fallback-seller", name: "seller", description: "Vendedor" },
+  { id: "fallback-admin", name: "admin", description: "Administrador" },
+  { id: "fallback-owner", name: "owner", description: "Propietario" },
+];
+
 type UserLimitInfo = {
   totalCount: number;
   totalLimit: number;
@@ -117,10 +124,12 @@ export function AssignUserDialog({
       ])
         .then(([users, rolesData]) => {
           setAvailableUsers(Array.isArray(users) ? users : []);
-          setRoles(Array.isArray(rolesData) ? rolesData : []);
+          const rolesList = Array.isArray(rolesData) ? rolesData : [];
+          setRoles(rolesList);
+          const firstRole = rolesList[0]?.name ?? FALLBACK_ROLES[0].name;
           reset({
             userId: "",
-            role: rolesData?.[0]?.name ?? "seller",
+            role: firstRole,
           });
         })
         .catch(() => {
@@ -221,13 +230,13 @@ export function AssignUserDialog({
             <Select
               value={roleValue}
               onValueChange={(val) => setValue("role", val)}
-              disabled={loadingData || roles.length === 0}
+              disabled={loadingData}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Selecciona un rol" />
               </SelectTrigger>
               <SelectContent>
-                {roles.map((r) => (
+                {(roles.length > 0 ? roles : FALLBACK_ROLES).map((r) => (
                   <SelectItem key={r.id} value={r.name}>
                     {r.name}
                   </SelectItem>
