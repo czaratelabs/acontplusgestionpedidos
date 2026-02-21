@@ -12,6 +12,7 @@ export interface JwtPayload {
   companyId?: string | null;
   role?: string;
   permissions?: Record<string, unknown>;
+  isSuperAdmin?: boolean;
 }
 
 export const SUPER_ADMIN_ROLE = 'super_admin';
@@ -55,7 +56,10 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     if (!user) throw new UnauthorizedException('Usuario no encontrado');
 
     const role = payload.role ?? 'seller';
-    const isSuperAdmin = role?.toUpperCase() === 'SUPER_ADMIN';
+    const isSuperAdmin =
+      payload.isSuperAdmin === true ||
+      user.is_super_admin === true ||
+      role?.toUpperCase() === 'SUPER_ADMIN';
     const companyId = payload.companyId ?? null;
 
     // SUPER_ADMIN has full access even when company_id is null
@@ -71,7 +75,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       role: effectiveRole,
       companyId: companyId ?? undefined,
       permissions: payload.permissions ?? {},
-      isSuperAdmin: effectiveRole?.toUpperCase() === 'SUPER_ADMIN',
+      isSuperAdmin,
     };
     this.cls.set('user', safeUser);
     return safeUser;

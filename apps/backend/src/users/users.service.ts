@@ -40,11 +40,15 @@ export class UsersService {
   async findAllByCompany(
     companyId: string,
   ): Promise<Array<{ id: string; full_name: string; email: string; created_at: Date; role: string }>> {
-    const userCompanies = await this.userCompanyRepository.find({
-      where: { companyId, isActive: true },
-      relations: ['user', 'role'],
-      order: { user: { created_at: 'DESC' } },
-    });
+    const userCompanies = await this.userCompanyRepository
+      .createQueryBuilder('uc')
+      .innerJoinAndSelect('uc.user', 'u')
+      .innerJoinAndSelect('uc.role', 'r')
+      .where('uc.companyId = :companyId', { companyId })
+      .andWhere('uc.isActive = :active', { active: true })
+      .andWhere('(u.is_super_admin IS NULL OR u.is_super_admin = false)')
+      .orderBy('u.created_at', 'DESC')
+      .getMany();
 
     return userCompanies.map((uc) => ({
       id: uc.user.id,
@@ -158,11 +162,14 @@ export class UsersService {
     });
     const assignedIds = alreadyAssigned.map((uc) => uc.userId);
 
+    const excludeSuperAdmin = '(u.is_super_admin IS NULL OR u.is_super_admin = false)';
     if (assignedIds.length === 0) {
-      const all = await this.userRepository.find({
-        select: ['id', 'full_name', 'email'],
-        order: { full_name: 'ASC' },
-      });
+      const all = await this.userRepository
+        .createQueryBuilder('u')
+        .select(['u.id', 'u.full_name', 'u.email'])
+        .where(excludeSuperAdmin)
+        .orderBy('u.full_name', 'ASC')
+        .getMany();
       return all;
     }
 
@@ -170,6 +177,7 @@ export class UsersService {
       .createQueryBuilder('u')
       .select(['u.id', 'u.full_name', 'u.email'])
       .where('u.id NOT IN (:...ids)', { ids: assignedIds })
+      .andWhere(excludeSuperAdmin)
       .orderBy('u.full_name', 'ASC')
       .getMany();
 

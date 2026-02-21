@@ -98,7 +98,11 @@ export default function LoginPage() {
       } else {
         Cookies.set("token", data.access_token, { expires: 1 });
         localStorage.setItem("user", JSON.stringify(data.user));
-        router.push(`/dashboard/${data.user.companyId}`);
+        const target =
+          data.user?.companyId == null || data.user?.companyId === ""
+            ? "/dashboard/admin"
+            : `/dashboard/${data.user.companyId}`;
+        router.push(target);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Credenciales incorrectas");
@@ -131,7 +135,11 @@ export default function LoginPage() {
 
       Cookies.set("token", data.access_token, { expires: 1 });
       localStorage.setItem("user", JSON.stringify(data.user));
-      router.push(`/dashboard/${data.user.companyId}`);
+      const target =
+        data.user?.companyId == null || data.user?.companyId === ""
+          ? "/dashboard/admin"
+          : `/dashboard/${data.user.companyId}`;
+      router.push(target);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Error al seleccionar empresa"

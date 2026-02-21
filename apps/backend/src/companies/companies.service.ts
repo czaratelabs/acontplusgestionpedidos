@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { validate as isUuid } from 'uuid';
 import { AssignSubscriptionDto } from './dto/assign-subscription.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -41,6 +42,9 @@ export class CompaniesService {
 
   // Los métodos reciben id como string para soportar UUIDs
   async findOne(id: string): Promise<Company | null> {
+    if (!id?.trim() || !isUuid(id)) {
+      return null;
+    }
     return await this.companyRepository.findOne({
       where: { id },
       relations: ['plan'],

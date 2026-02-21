@@ -36,9 +36,10 @@ export class AuthService {
           name: string;
           email: string;
           companies: CompanyAssignment[];
-          companyId: string;
+          companyId: string | null;
           role: string;
           permissions?: Record<string, unknown>;
+          isSuperAdmin?: boolean;
         };
       }
   > {
@@ -54,6 +55,33 @@ export class AuthService {
       } else {
         throw new UnauthorizedException('Credenciales incorrectas');
       }
+    }
+
+    // SuperAdmin (is_super_admin) logs in directly in Global Mode — no company required
+    const isSuperAdmin = user.is_super_admin === true;
+    if (isSuperAdmin) {
+      const payload = {
+        sub: user.id,
+        username: user.email,
+        name: user.full_name,
+        companyId: null,
+        role: 'super_admin',
+        permissions: { '*': true },
+        isSuperAdmin: true,
+      };
+      return {
+        access_token: await this.jwtService.signAsync(payload),
+        user: {
+          id: user.id,
+          name: user.full_name,
+          email: user.email,
+          companies: [],
+          companyId: null,
+          role: 'super_admin',
+          permissions: { '*': true },
+          isSuperAdmin: true,
+        },
+      };
     }
 
     const companies: CompanyAssignment[] = (user.userCompanies ?? [])
@@ -135,17 +163,18 @@ export class AuthService {
     const user = await this.usersService.findOneById(payload.sub);
     if (!user) throw new UnauthorizedException('Usuario no encontrado');
 
-    const superAdminAssignment = (user.userCompanies ?? []).find(
+    const isSuperAdmin = user.is_super_admin === true;
+    const superAdminFromRole = (user.userCompanies ?? []).find(
       (uc) => uc.isActive && uc.role?.name?.toUpperCase() === 'SUPER_ADMIN',
     );
 
-    // SUPER_ADMIN can select null/global to get full access without company scope
+    // SuperAdmin (is_super_admin or legacy role) can select null/global for full access without company scope
     if (
       (!companyId || companyId === '__global__') &&
-      superAdminAssignment
+      (isSuperAdmin || superAdminFromRole)
     ) {
-      const roleName = superAdminAssignment.role?.name ?? 'super_admin';
-      const permissions = superAdminAssignment.role?.permissions ?? { '*': true };
+      const roleName = superAdminFromRole?.role?.name ?? 'super_admin';
+      const permissions = superAdminFromRole?.role?.permissions ?? { '*': true };
       const jwtPayload = {
         sub: user.id,
         username: user.email,
@@ -153,6 +182,7 @@ export class AuthService {
         companyId: null,
         role: roleName,
         permissions,
+        isSuperAdmin: true,
       };
       const companies: CompanyAssignment[] = (user.userCompanies ?? [])
         .filter((uc) => uc.isActive && uc.company)

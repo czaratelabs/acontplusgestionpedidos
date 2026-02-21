@@ -21,6 +21,34 @@ export async function getCompanies() {
   return res.json();
 }
 
+/** Obtiene todas las empresas (para admin). Retorna [] si hay error. */
+export async function getCompaniesForAdmin(): Promise<
+  Array<{
+    id: string;
+    name: string;
+    ruc_nit: string;
+    planId: string | null;
+    plan?: { id: string; name: string } | null;
+    subscriptionStartDate: string | null;
+    subscriptionEndDate: string | null;
+  }>
+> {
+  try {
+    const authHeaders = await getAuthHeaders();
+    const res = await fetch(`${API_BASE}/companies`, {
+      cache: "no-store",
+      headers: authHeaders,
+    });
+    if (!res.ok) return [];
+    const text = await res.text();
+    if (!text?.trim()) return [];
+    const data = JSON.parse(text);
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
+  }
+}
+
 // Busca una empresa específica por su ID
 export async function getCompany(id: string) {
   try {
@@ -31,7 +59,9 @@ export async function getCompany(id: string) {
     });
 
     if (!res.ok) return null;
-    return res.json();
+    const text = await res.text();
+    if (!text?.trim()) return null;
+    return JSON.parse(text);
   } catch (error) {
     console.error("Error fetching company:", error);
     return null;

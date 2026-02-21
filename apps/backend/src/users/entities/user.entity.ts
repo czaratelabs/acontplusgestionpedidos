@@ -24,6 +24,9 @@ export class User {
   @Column({ default: true })
   is_active: boolean;
 
+  @Column({ name: 'is_super_admin', default: false })
+  is_super_admin: boolean;
+
   @CreateDateColumn({ name: 'created_at' })
   created_at: Date;
 

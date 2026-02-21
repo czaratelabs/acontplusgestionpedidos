@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import { jwtDecode } from "jwt-decode";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { CreditCard } from "lucide-react";
+import { CreditCard, LayoutDashboard } from "lucide-react";
 import { UserNav } from "@/components/user-nav";
 
 interface TokenPayload {
@@ -10,6 +10,8 @@ interface TokenPayload {
   username: string;
   role: string;
   name: string;
+  companyId?: string | null;
+  isSuperAdmin?: boolean;
 }
 
 export default async function AdminLayout({
@@ -21,20 +23,22 @@ export default async function AdminLayout({
   const token = cookieStore.get("token")?.value;
 
   let user = { name: "Usuario", email: "correo@demo.com", role: "seller" };
+  let payload: TokenPayload | null = null;
   if (token) {
     try {
-      const decoded = jwtDecode<TokenPayload>(token);
+      payload = jwtDecode<TokenPayload>(token);
       user = {
-        name: decoded.name || "Usuario",
-        email: decoded.username,
-        role: decoded.role,
+        name: payload.name || "Usuario",
+        email: payload.username,
+        role: payload.role,
       };
     } catch {
       // fallback
     }
   }
 
-  const isSuperAdmin = user.role?.toUpperCase() === "SUPER_ADMIN";
+  const isSuperAdmin =
+    payload?.isSuperAdmin === true || user.role?.toUpperCase() === "SUPER_ADMIN";
   if (!isSuperAdmin) {
     redirect("/");
   }
@@ -56,8 +60,15 @@ export default async function AdminLayout({
             Administración Global
           </div>
           <Link
+            href="/dashboard/admin"
+            className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-200 hover:bg-slate-800 hover:text-white transition-all"
+          >
+            <LayoutDashboard className="h-4 w-4" />
+            Inicio
+          </Link>
+          <Link
             href="/dashboard/admin/subscriptions"
-            className="flex items-center gap-3 px-3 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium shadow-md shadow-blue-900/20 transition-all hover:bg-blue-500"
+            className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-200 hover:bg-slate-800 hover:text-white transition-all"
           >
             <CreditCard className="h-4 w-4" />
             Planes de Suscripción
