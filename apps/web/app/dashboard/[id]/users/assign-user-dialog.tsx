@@ -45,15 +45,31 @@ type Role = {
   description: string | null;
 };
 
+type UserLimitInfo = {
+  totalCount: number;
+  totalLimit: number;
+  sellersCount: number;
+  sellersLimit: number;
+};
+
 type AssignUserDialogProps = {
   companyId: string;
+  limitInfo?: UserLimitInfo;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess?: () => void;
 };
 
+const defaultLimitInfo: UserLimitInfo = {
+  totalCount: 0,
+  totalLimit: -1,
+  sellersCount: 0,
+  sellersLimit: -1,
+};
+
 export function AssignUserDialog({
   companyId,
+  limitInfo = defaultLimitInfo,
   open,
   onOpenChange,
   onSuccess,
@@ -81,6 +97,12 @@ export function AssignUserDialog({
 
   const userIdValue = watch("userId");
   const roleValue = watch("role");
+
+  const totalLimitReached = limitInfo.totalLimit >= 0 && limitInfo.totalCount >= limitInfo.totalLimit;
+  const sellersLimitReached = limitInfo.sellersLimit >= 0 && limitInfo.sellersCount >= limitInfo.sellersLimit;
+  const roleNameLower = String(roleValue || "").toLowerCase();
+  const isVendedorRole = roleNameLower.includes("vendedor") || roleNameLower.includes("seller");
+  const assignDisabledBySellers = !totalLimitReached && isVendedorRole && sellersLimitReached;
 
   useEffect(() => {
     if (open) {
@@ -127,7 +149,8 @@ export function AssignUserDialog({
 
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(data.message || "Error al asignar");
+        const msg = Array.isArray(data.message) ? data.message[0] : (data.message ?? "Error al asignar");
+        throw new Error(typeof msg === "string" ? msg : "Error al asignar");
       }
 
       onOpenChange(false);
@@ -226,7 +249,8 @@ export function AssignUserDialog({
             </Button>
             <Button
               type="submit"
-              disabled={loading || loadingData || availableUsers.length === 0}
+              disabled={loading || loadingData || availableUsers.length === 0 || assignDisabledBySellers}
+              title={assignDisabledBySellers ? "Límite de vendedores alcanzado. Selecciona otro rol." : undefined}
             >
               {loading ? "Asignando..." : "Asignar"}
             </Button>

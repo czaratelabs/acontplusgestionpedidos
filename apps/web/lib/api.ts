@@ -38,6 +38,26 @@ export async function getCompany(id: string) {
   }
 }
 
+// Obtener info de límite de usuarios (total y vendedores) para una empresa
+export async function getCompanyUserLimitInfo(companyId: string): Promise<{
+  totalCount: number;
+  totalLimit: number;
+  sellersCount: number;
+  sellersLimit: number;
+}> {
+  try {
+    const authHeaders = await getAuthHeaders();
+    const res = await fetch(`${API_BASE}/users/company/${companyId}/limit-info`, {
+      cache: "no-store",
+      headers: authHeaders,
+    });
+    if (!res.ok) return { totalCount: 0, totalLimit: -1, sellersCount: 0, sellersLimit: -1 };
+    return res.json();
+  } catch {
+    return { totalCount: 0, totalLimit: -1, sellersCount: 0, sellersLimit: -1 };
+  }
+}
+
 // Obtener usuarios de una empresa
 export async function getCompanyUsers(companyId: string) {
   try {
@@ -51,6 +71,23 @@ export async function getCompanyUsers(companyId: string) {
   } catch (error) {
     console.error("Error fetching users:", error);
     return [];
+  }
+}
+
+// Obtener info de límite de establecimientos (count, limit) para una empresa
+export async function getCompanyEstablishmentLimitInfo(
+  companyId: string
+): Promise<{ count: number; limit: number }> {
+  try {
+    const authHeaders = await getAuthHeaders();
+    const res = await fetch(
+      `${API_BASE}/establishments/company/${companyId}/limit-info`,
+      { cache: "no-store", headers: authHeaders }
+    );
+    if (!res.ok) return { count: 0, limit: -1 };
+    return res.json();
+  } catch {
+    return { count: 0, limit: -1 };
   }
 }
 

@@ -34,9 +34,10 @@ type EstablishmentRow = {
 type EstablishmentCardProps = {
   establishment: EstablishmentRow;
   companyId: string;
+  limitInfo?: { count: number; limit: number };
 };
 
-export function EstablishmentCard({ establishment, companyId }: EstablishmentCardProps) {
+export function EstablishmentCard({ establishment, companyId, limitInfo = { count: 0, limit: -1 } }: EstablishmentCardProps) {
   const router = useRouter();
   const { toast } = useToast();
   const [inactivateTarget, setInactivateTarget] = useState<EstablishmentRow | null>(null);
@@ -45,15 +46,16 @@ export function EstablishmentCard({ establishment, companyId }: EstablishmentCar
 
   const est = establishment;
   const isActive = est.isActive !== false; // default true for existing data before migration
+  const limitReached = limitInfo.limit >= 0 && limitInfo.count >= limitInfo.limit;
 
   async function handleInactivate() {
     if (!inactivateTarget) return;
     setInactivating(true);
     try {
-      const res = await fetch(`${API_BASE}/establishments/${inactivateTarget.id}`, {
-        method: "DELETE",
-        credentials: "include",
-      });
+      const res = await fetch(
+        `${API_BASE}/establishments/${inactivateTarget.id}?companyId=${encodeURIComponent(companyId)}`,
+        { method: "DELETE", credentials: "include" }
+      );
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.message || "Error al inactivar");
       setInactivateTarget(null);
@@ -77,10 +79,10 @@ export function EstablishmentCard({ establishment, companyId }: EstablishmentCar
   async function handleActivate() {
     setActivatingId(est.id);
     try {
-      const res = await fetch(`${API_BASE}/establishments/${est.id}/activate`, {
-        method: "PATCH",
-        credentials: "include",
-      });
+      const res = await fetch(
+        `${API_BASE}/establishments/${est.id}/activate?companyId=${encodeURIComponent(companyId)}`,
+        { method: "PATCH", credentials: "include" }
+      );
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.message || "Error al activar");
       router.refresh();
@@ -132,7 +134,8 @@ export function EstablishmentCard({ establishment, companyId }: EstablishmentCar
                 size="icon"
                 className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50"
                 aria-label="Activar establecimiento"
-                disabled={activatingId === est.id}
+                title={limitReached ? "Límite de plan alcanzado" : undefined}
+                disabled={activatingId === est.id || limitReached}
                 onClick={handleActivate}
               >
                 <CheckCircle className="h-4 w-4" />

@@ -5,11 +5,19 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { AssignUserDto } from './dto/assign-user.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AdminGuard } from '../common/guards/admin.guard';
+import { ModuleEnabledGuard } from '../common/guards/module-enabled.guard';
+import { ModuleEnabled } from '../common/decorators/module-enabled.decorator';
 
 @Controller('users')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, ModuleEnabledGuard)
+@ModuleEnabled('admin_users_roles')
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
+
+  @Get('company/:companyId/limit-info')
+  getUserLimitInfo(@Param('companyId') companyId: string) {
+    return this.usersService.getUserLimitInfo(companyId);
+  }
 
   @Get('available-for-company/:companyId')
   @UseGuards(AdminGuard)

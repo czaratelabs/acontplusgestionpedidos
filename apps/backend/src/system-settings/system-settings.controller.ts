@@ -10,12 +10,15 @@ import {
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AdminGuard } from '../common/guards/admin.guard';
+import { ModuleEnabledGuard } from '../common/guards/module-enabled.guard';
+import { ModuleEnabled } from '../common/decorators/module-enabled.decorator';
 import { SystemSettingsService } from './system-settings.service';
 import { SystemSetting } from './entities/system-setting.entity';
 import { UpdateSettingDto } from './dto/update-setting.dto';
 
 @Controller('system-settings')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, ModuleEnabledGuard)
+@ModuleEnabled('admin_general_config')
 export class SystemSettingsController {
   constructor(private readonly service: SystemSettingsService) {}
 

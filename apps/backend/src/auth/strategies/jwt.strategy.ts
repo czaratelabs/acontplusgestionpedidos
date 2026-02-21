@@ -8,8 +8,16 @@ import { UsersService } from '../../users/users.service';
 export interface JwtPayload {
   sub: string;
   username?: string;
-  companyId?: string;
+  name?: string;
+  companyId?: string | null;
   role?: string;
+  permissions?: Record<string, unknown>;
+}
+
+export const SUPER_ADMIN_ROLE = 'super_admin';
+
+export function isSuperAdmin(role: string | undefined): boolean {
+  return role?.toUpperCase() === 'SUPER_ADMIN';
 }
 
 @Injectable()
@@ -34,22 +42,36 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
 
   async validate(
     payload: JwtPayload,
-  ): Promise<{ id: string; full_name: string; email: string; role: string; companyId?: string }> {
+  ): Promise<{
+    id: string;
+    full_name: string;
+    email: string;
+    role: string;
+    companyId?: string;
+    permissions?: Record<string, unknown>;
+    isSuperAdmin: boolean;
+  }> {
     const user = await this.usersService.findOneById(payload.sub);
     if (!user) throw new UnauthorizedException('Usuario no encontrado');
 
+    const role = payload.role ?? 'seller';
+    const isSuperAdmin = role?.toUpperCase() === 'SUPER_ADMIN';
     const companyId = payload.companyId ?? null;
-    const role =
+
+    // SUPER_ADMIN has full access even when company_id is null
+    const effectiveRole =
       payload.role ??
       (companyId ? await this.usersService.getRoleForCompany(payload.sub, companyId) : null) ??
-      'seller';
+      (isSuperAdmin ? 'super_admin' : 'seller');
 
     const safeUser = {
       id: user.id,
       full_name: user.full_name,
       email: user.email,
-      role,
+      role: effectiveRole,
       companyId: companyId ?? undefined,
+      permissions: payload.permissions ?? {},
+      isSuperAdmin: effectiveRole?.toUpperCase() === 'SUPER_ADMIN',
     };
     this.cls.set('user', safeUser);
     return safeUser;

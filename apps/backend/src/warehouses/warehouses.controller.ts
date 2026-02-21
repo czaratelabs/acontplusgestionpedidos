@@ -7,6 +7,11 @@ import { UpdateWarehouseDto } from './dto/update-warehouse.dto';
 export class WarehousesController {
   constructor(private readonly warehousesService: WarehousesService) {}
 
+  @Get('company/:companyId/limit-info')
+  getLimitInfo(@Param('companyId') companyId: string) {
+    return this.warehousesService.getWarehouseLimitInfo(companyId);
+  }
+
   @Post('establishment/:establishmentId')
   create(
     @Param('establishmentId') establishmentId: string,

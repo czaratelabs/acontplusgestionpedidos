@@ -35,12 +35,28 @@ type UserRow = {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
+type LimitInfo = {
+  totalCount: number;
+  totalLimit: number;
+  sellersCount: number;
+  sellersLimit: number;
+};
+
+const defaultLimitInfo: LimitInfo = {
+  totalCount: 0,
+  totalLimit: -1,
+  sellersCount: 0,
+  sellersLimit: -1,
+};
+
 export function UsersTableClient({
   users,
   companyId,
+  limitInfo = defaultLimitInfo,
 }: {
   users: UserRow[];
   companyId: string;
+  limitInfo?: LimitInfo;
 }) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
@@ -51,6 +67,8 @@ export function UsersTableClient({
   const { toast } = useToast();
 
   const refresh = () => router.refresh();
+  const totalLimitReached =
+    limitInfo.totalLimit >= 0 && limitInfo.totalCount >= limitInfo.totalLimit;
 
   function openNewDialog() {
     setEditingUser(null);
@@ -113,6 +131,8 @@ export function UsersTableClient({
             variant="outline"
             className="border-slate-300"
             onClick={() => setAssignDialogOpen(true)}
+            disabled={totalLimitReached}
+            title={totalLimitReached ? "Límite de plan alcanzado" : undefined}
           >
             <UserPlus className="h-4 w-4 mr-2" />
             Asignar usuario existente
@@ -120,6 +140,8 @@ export function UsersTableClient({
           <Button
             className="bg-slate-900 hover:bg-slate-800 shadow-md"
             onClick={openNewDialog}
+            disabled={totalLimitReached}
+            title={totalLimitReached ? "Límite de plan alcanzado" : undefined}
           >
             + Nuevo Usuario
           </Button>
@@ -129,12 +151,14 @@ export function UsersTableClient({
       <UserDialog
         companyId={companyId}
         initialData={editingUser}
+        limitInfo={limitInfo}
         open={dialogOpen}
         onOpenChange={handleDialogOpenChange}
       />
 
       <AssignUserDialog
         companyId={companyId}
+        limitInfo={limitInfo}
         open={assignDialogOpen}
         onOpenChange={setAssignDialogOpen}
         onSuccess={refresh}

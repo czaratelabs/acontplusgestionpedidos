@@ -10,6 +10,7 @@ export interface CompanyAssignment {
   companyId: string;
   companyName?: string;
   role: string;
+  permissions?: Record<string, unknown>;
 }
 
 @Injectable()
@@ -37,6 +38,7 @@ export class AuthService {
           companies: CompanyAssignment[];
           companyId: string;
           role: string;
+          permissions?: Record<string, unknown>;
         };
       }
   > {
@@ -60,6 +62,7 @@ export class AuthService {
         companyId: uc.company.id,
         companyName: uc.company.name,
         role: uc.role?.name ?? 'seller',
+        permissions: uc.role?.permissions ?? {},
       }));
 
     if (companies.length === 0) {
@@ -89,8 +92,10 @@ export class AuthService {
     const payload = {
       sub: user.id,
       username: user.email,
+      name: user.full_name,
       companyId: primary.companyId,
       role: primary.role,
+      permissions: primary.permissions ?? {},
     };
 
     return {
@@ -102,13 +107,14 @@ export class AuthService {
         companies,
         companyId: primary.companyId,
         role: primary.role,
+        permissions: primary.permissions ?? {},
       },
     };
   }
 
   async selectCompany(
     sessionToken: string,
-    companyId: string,
+    companyId: string | null,
   ): Promise<{
     access_token: string;
     user: {
@@ -116,8 +122,9 @@ export class AuthService {
       name: string;
       email: string;
       companies: CompanyAssignment[];
-      companyId: string;
+      companyId: string | null;
       role: string;
+      permissions?: Record<string, unknown>;
     };
   }> {
     const payload = await this.jwtService.verifyAsync(sessionToken);
@@ -128,6 +135,47 @@ export class AuthService {
     const user = await this.usersService.findOneById(payload.sub);
     if (!user) throw new UnauthorizedException('Usuario no encontrado');
 
+    const superAdminAssignment = (user.userCompanies ?? []).find(
+      (uc) => uc.isActive && uc.role?.name?.toUpperCase() === 'SUPER_ADMIN',
+    );
+
+    // SUPER_ADMIN can select null/global to get full access without company scope
+    if (
+      (!companyId || companyId === '__global__') &&
+      superAdminAssignment
+    ) {
+      const roleName = superAdminAssignment.role?.name ?? 'super_admin';
+      const permissions = superAdminAssignment.role?.permissions ?? { '*': true };
+      const jwtPayload = {
+        sub: user.id,
+        username: user.email,
+        name: user.full_name,
+        companyId: null,
+        role: roleName,
+        permissions,
+      };
+      const companies: CompanyAssignment[] = (user.userCompanies ?? [])
+        .filter((uc) => uc.isActive && uc.company)
+        .map((uc) => ({
+          companyId: uc.company.id,
+          companyName: uc.company.name,
+          role: uc.role?.name ?? 'seller',
+          permissions: uc.role?.permissions ?? {},
+        }));
+      return {
+        access_token: await this.jwtService.signAsync(jwtPayload),
+        user: {
+          id: user.id,
+          name: user.full_name,
+          email: user.email,
+          companies,
+          companyId: null,
+          role: roleName,
+          permissions,
+        },
+      };
+    }
+
     const assignment = (user.userCompanies ?? []).find(
       (uc) => uc.companyId === companyId && uc.isActive && uc.company,
     );
@@ -135,11 +183,15 @@ export class AuthService {
       throw new UnauthorizedException('No tienes acceso a esta empresa');
     }
 
+    const roleName = assignment.role?.name ?? 'seller';
+    const permissions = assignment.role?.permissions ?? {};
     const jwtPayload = {
       sub: user.id,
       username: user.email,
+      name: user.full_name,
       companyId: assignment.companyId,
-      role: assignment.role?.name ?? 'seller',
+      role: roleName,
+      permissions,
     };
 
     const companies: CompanyAssignment[] = (user.userCompanies ?? [])
@@ -148,6 +200,7 @@ export class AuthService {
         companyId: uc.company.id,
         companyName: uc.company.name,
         role: uc.role?.name ?? 'seller',
+        permissions: uc.role?.permissions ?? {},
       }));
 
     return {
@@ -158,7 +211,8 @@ export class AuthService {
         email: user.email,
         companies,
         companyId: assignment.companyId,
-        role: assignment.role?.name ?? 'seller',
+        role: roleName,
+        permissions,
       },
     };
   }
@@ -191,24 +245,33 @@ export class AuthService {
   }
 
   /**
-   * Asegura que los roles del sistema (admin, seller, owner) existan.
-   * Los crea si no existen.
+   * Asegura que los roles del sistema (admin, seller, owner, super_admin) existan.
+   * Los crea si no existen. Si ya existen (NotFoundException al buscar o ConflictException al crear),
+   * se continúa sin error.
    */
   private async ensureSystemRoles(): Promise<void> {
-    const systemRoles = ['admin', 'seller', 'owner'];
-    
+    const systemRoles = ['admin', 'seller', 'owner', 'super_admin'];
+
     for (const roleName of systemRoles) {
       try {
         await this.rolesService.findByNameForCompany(roleName, null);
+        // Rol ya existe, continuar
       } catch (error) {
-        // Si el rol no existe, crearlo
         if (error instanceof NotFoundException) {
-          await this.rolesService.create({
-            name: roleName,
-            description: `Rol del sistema: ${roleName}`,
-            companyId: null, // Rol del sistema (sin empresa específica)
-            isActive: true,
-          });
+          try {
+            await this.rolesService.create({
+              name: roleName,
+              description: `Rol del sistema: ${roleName}`,
+              companyId: null,
+              isActive: true,
+            });
+          } catch (createError) {
+            // Rol creado por otra petición en paralelo (race condition)
+            if (createError instanceof ConflictException) {
+              continue;
+            }
+            throw createError;
+          }
         } else {
           throw error;
         }

@@ -8,13 +8,17 @@ import {
   Param,
   Query,
   NotFoundException,
+  UseGuards,
 } from '@nestjs/common';
 import { ContactsService } from './contacts.service';
 import { CreateContactDto } from './dto/create-contact.dto';
 import { UpdateContactDto } from './dto/update-contact.dto';
 import { SearchContactDto } from './dto/search-contact.dto';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { ContactsModuleGuard } from '../common/guards/contacts-module.guard';
 
 @Controller('contacts')
+@UseGuards(JwtAuthGuard, ContactsModuleGuard)
 export class ContactsController {
   constructor(private readonly contactsService: ContactsService) {}
 

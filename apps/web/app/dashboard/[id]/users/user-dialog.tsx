@@ -47,14 +47,29 @@ const formSchema = z.object({
 
 type FormValues = z.infer<typeof formSchema>;
 
+type UserLimitInfo = {
+  totalCount: number;
+  totalLimit: number;
+  sellersCount: number;
+  sellersLimit: number;
+};
+
 type UserDialogProps = {
   companyId: string;
   initialData?: UserForDialog | null;
+  limitInfo?: UserLimitInfo;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
 };
 
-export function UserDialog({ companyId, initialData = null, open: controlledOpen, onOpenChange }: UserDialogProps) {
+const defaultLimitInfo: UserLimitInfo = {
+  totalCount: 0,
+  totalLimit: -1,
+  sellersCount: 0,
+  sellersLimit: -1,
+};
+
+export function UserDialog({ companyId, initialData = null, limitInfo = defaultLimitInfo, open: controlledOpen, onOpenChange }: UserDialogProps) {
   const [internalOpen, setInternalOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
@@ -77,6 +92,11 @@ export function UserDialog({ companyId, initialData = null, open: controlledOpen
   });
 
   const roleValue = watch("role");
+
+  const totalLimitReached = limitInfo.totalLimit >= 0 && limitInfo.totalCount >= limitInfo.totalLimit;
+  const sellersLimitReached = limitInfo.sellersLimit >= 0 && limitInfo.sellersCount >= limitInfo.sellersLimit;
+  const isVendedorRole = roleValue === "seller" || String(roleValue || "").toLowerCase().includes("vendedor");
+  const createDisabledBySellers = !totalLimitReached && isVendedorRole && sellersLimitReached;
 
   useEffect(() => {
     if (open && initialData) {
@@ -129,7 +149,8 @@ export function UserDialog({ companyId, initialData = null, open: controlledOpen
 
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(data.message || "Error al guardar");
+        const msg = Array.isArray(data.message) ? data.message[0] : (data.message ?? "Error al guardar");
+        throw new Error(typeof msg === "string" ? msg : "Error al guardar");
       }
 
       setOpen(false);
@@ -144,7 +165,7 @@ export function UserDialog({ companyId, initialData = null, open: controlledOpen
       console.error(error);
       toast({
         title: "Error",
-        description: "Error al guardar el usuario.",
+        description: error instanceof Error ? error.message : "Error al guardar el usuario.",
         variant: "destructive",
       });
     } finally {
@@ -208,7 +229,11 @@ export function UserDialog({ companyId, initialData = null, open: controlledOpen
         </div>
 
         <DialogFooter>
-          <Button type="submit" disabled={loading}>
+          <Button
+            type="submit"
+            disabled={loading || (!isEditing && createDisabledBySellers)}
+            title={!isEditing && createDisabledBySellers ? "Límite de vendedores alcanzado. Selecciona otro rol." : undefined}
+          >
             {loading ? "Guardando..." : isEditing ? "Actualizar" : "Crear Usuario"}
           </Button>
         </DialogFooter>

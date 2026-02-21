@@ -47,6 +47,7 @@ export class RolesService {
       description: dto.description?.trim() || null,
       isActive: dto.isActive ?? true,
       companyId,
+      permissions: dto.permissions ?? {},
     });
     return this.roleRepository.save(role);
   }
@@ -64,6 +65,7 @@ export class RolesService {
     if (dto.description !== undefined) role.description = dto.description?.trim() || null;
     if (dto.isActive !== undefined) role.isActive = dto.isActive;
     if (dto.companyId !== undefined) role.companyId = companyId;
+    if (dto.permissions !== undefined) role.permissions = dto.permissions;
 
     return this.roleRepository.save(role);
   }

@@ -54,9 +54,21 @@ export default function BusinessRulesPage({
     fetch(`${API_BASE}/business-rules?companyId=${encodeURIComponent(companyId)}`, {
       credentials: "include",
     })
-      .then((res) => (res.ok ? res.json() : []))
-      .then((data: BusinessRule[]) => {
-        if (!cancelled && Array.isArray(data)) {
+      .then((res) => {
+        if (res.status === 403) {
+          toast({
+            title: "Acceso denegado",
+            description: "Este módulo no está activo en tu plan actual.",
+            variant: "destructive",
+          });
+          router.replace(`/dashboard/${companyId}`);
+          return null;
+        }
+        return res.ok ? res.json() : [];
+      })
+      .then((data: BusinessRule[] | null) => {
+        if (cancelled || data === null) return;
+        if (Array.isArray(data)) {
           const rule = data.find((r) => r.ruleKey === RULE_INVENTORY_PREVENT_NEGATIVE_STOCK);
           setPreventNegativeStock(rule?.isEnabled ?? false);
         }

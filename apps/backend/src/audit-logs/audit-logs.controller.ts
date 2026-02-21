@@ -1,7 +1,12 @@
-import { Controller, Get, Param, Query } from '@nestjs/common';
+import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
 import { AuditLogsService } from './audit-logs.service';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { ModuleEnabledGuard } from '../common/guards/module-enabled.guard';
+import { ModuleEnabled } from '../common/decorators/module-enabled.decorator';
 
 @Controller('audit-logs')
+@UseGuards(JwtAuthGuard, ModuleEnabledGuard)
+@ModuleEnabled('admin_audit')
 export class AuditLogsController {
   constructor(private readonly auditLogsService: AuditLogsService) {}
 

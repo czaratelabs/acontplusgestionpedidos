@@ -1,8 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { EmissionPoint } from './entities/emission-point.entity';
 import { Establishment } from '../establishments/entities/establishment.entity';
+import { CompaniesService } from '../companies/companies.service';
 import { CreateEmissionPointDto } from './dto/create-emission-point.dto';
 import { UpdateEmissionPointDto } from './dto/update-emission-point.dto';
 
@@ -13,6 +14,7 @@ export class EmissionPointsService {
     private pointRepo: Repository<EmissionPoint>,
     @InjectRepository(Establishment)
     private establishmentRepo: Repository<Establishment>,
+    private companiesService: CompaniesService,
   ) {}
 
   async create(establishmentId: string, dto: CreateEmissionPointDto) {
@@ -22,11 +24,25 @@ export class EmissionPointsService {
     });
     if (!establishment) throw new NotFoundException('Establecimiento no encontrado');
 
+    const companyId = establishment.company?.id;
+    if (companyId) {
+      const canAdd = await this.companiesService.checkResourceLimit(companyId, 'max_emission_points');
+      if (!canAdd) {
+        throw new ForbiddenException(
+          'Has alcanzado el límite de Puntos de Emisión permitidos en tu plan actual. Contacta al administrador para mejorar tu suscripción.',
+        );
+      }
+    }
+
     const newPoint = this.pointRepo.create({
       ...dto,
       establishment,
     });
     return this.pointRepo.save(newPoint);
+  }
+
+  async getEmissionPointLimitInfo(companyId: string): Promise<{ count: number; limit: number }> {
+    return this.companiesService.getEmissionPointLimitInfo(companyId);
   }
 
   async findAllByEstablishment(establishmentId: string) {

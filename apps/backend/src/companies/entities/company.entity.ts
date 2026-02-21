@@ -5,8 +5,11 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   OneToMany,
+  ManyToOne,
+  JoinColumn,
 } from 'typeorm';
 
+import { SubscriptionPlan } from './subscription-plan.entity';
 import { Establishment } from '../../establishments/entities/establishment.entity';
 import { Tax } from '../../taxes/entities/tax.entity';
 import { Contact } from '../../contacts/entities/contact.entity';
@@ -38,6 +41,22 @@ export class Company {
 
   @Column({ default: true })
   is_active: boolean;
+
+  @Column({ name: 'plan_id', type: 'uuid', nullable: true })
+  planId: string | null;
+
+  @ManyToOne(() => SubscriptionPlan, (plan) => plan.companies, { nullable: true, eager: true })
+  @JoinColumn({ name: 'plan_id' })
+  plan: SubscriptionPlan | null;
+
+  @Column({ name: 'subscription_start_date', type: 'date', nullable: true })
+  subscriptionStartDate: Date | null;
+
+  @Column({ name: 'subscription_end_date', type: 'date', nullable: true })
+  subscriptionEndDate: Date | null;
+
+  @Column({ name: 'subscription_period', type: 'varchar', length: 20, nullable: true })
+  subscriptionPeriod: 'monthly' | 'annual' | null;
 
   @CreateDateColumn({ name: 'created_at' })
   created_at: Date;

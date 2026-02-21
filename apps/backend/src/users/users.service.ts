@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { User } from './entities/user.entity';
 import { UserCompany } from './entities/user-company.entity';
 import { Company } from '../companies/entities/company.entity';
+import { CompaniesService } from '../companies/companies.service';
 import { RolesService } from '../roles/roles.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -18,6 +19,7 @@ export class UsersService {
     private userCompanyRepository: Repository<UserCompany>,
     @InjectRepository(Company)
     private companyRepository: Repository<Company>,
+    private companiesService: CompaniesService,
     private rolesService: RolesService,
   ) {}
 
@@ -61,6 +63,7 @@ export class UsersService {
     if (!company) throw new NotFoundException('Empresa no encontrada');
 
     const roleName = createUserDto.role ?? 'seller';
+    await this.companiesService.assertUserCreationLimit(companyId, roleName);
     const role = await this.rolesService.findByNameForCompany(roleName, companyId);
 
     let user = await this.userRepository.findOne({
@@ -195,6 +198,8 @@ export class UsersService {
       throw new ConflictException('Este usuario ya está asignado a esta empresa');
     }
 
+    await this.companiesService.assertUserCreationLimit(companyId, role);
+
     const roleEntity = await this.rolesService.findByNameForCompany(role, companyId);
 
     const userCompany = this.userCompanyRepository.create({
@@ -222,6 +227,18 @@ export class UsersService {
     });
     if (!uc) throw new NotFoundException('Asignación no encontrada');
     await this.userCompanyRepository.remove(uc);
+  }
+
+  /**
+   * Returns total and sellers limit info. Used by frontend to disable buttons and validate by role.
+   */
+  async getUserLimitInfo(companyId: string): Promise<{
+    totalCount: number;
+    totalLimit: number;
+    sellersCount: number;
+    sellersLimit: number;
+  }> {
+    return this.companiesService.getUserLimitInfo(companyId);
   }
 
   /**

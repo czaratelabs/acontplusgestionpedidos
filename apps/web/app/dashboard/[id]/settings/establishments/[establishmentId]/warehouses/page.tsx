@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, use } from "react";
+import { getCompanyWarehouseLimitInfoClient } from "@/lib/api-client";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -52,8 +53,11 @@ export default function WarehousesPage({
   const [inactivateTarget, setInactivateTarget] = useState<WarehouseItem | null>(null);
   const [inactivating, setInactivating] = useState(false);
   const [activatingId, setActivatingId] = useState<string | null>(null);
+  const [limitInfo, setLimitInfo] = useState<{ count: number; limit: number }>({ count: 0, limit: -1 });
   const router = useRouter();
   const { toast } = useToast();
+
+  const limitReached = limitInfo.limit >= 0 && limitInfo.count >= limitInfo.limit;
 
   const {
     register,
@@ -83,6 +87,10 @@ export default function WarehousesPage({
   useEffect(() => {
     fetchWarehouses();
   }, [establishmentId]);
+
+  useEffect(() => {
+    getCompanyWarehouseLimitInfoClient(companyId).then(setLimitInfo);
+  }, [companyId]);
 
   // Pre-llenar formulario en modo edición y limpiar al abrir en modo crear
   useEffect(() => {
@@ -122,6 +130,7 @@ export default function WarehousesPage({
       setInactivateTarget(null);
       await fetchWarehouses();
       router.refresh();
+      getCompanyWarehouseLimitInfoClient(companyId).then(setLimitInfo);
       toast({
         title: "Éxito",
         description: "Almacén inactivado correctamente.",
@@ -149,6 +158,7 @@ export default function WarehousesPage({
       if (!res.ok) throw new Error(data.message || "Error al activar");
       await fetchWarehouses();
       router.refresh();
+      getCompanyWarehouseLimitInfoClient(companyId).then(setLimitInfo);
       toast({
         title: "Éxito",
         description: "Almacén activado correctamente.",
@@ -185,13 +195,15 @@ export default function WarehousesPage({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(data.message || "Error al guardar");
+        const msg = Array.isArray(data.message) ? data.message[0] : (data.message ?? "Error al guardar");
+        throw new Error(typeof msg === "string" ? msg : "Error al guardar");
       }
       setOpen(false);
       setEditingWarehouse(null);
       reset({ name: "", description: "" });
       router.refresh();
       await fetchWarehouses();
+      getCompanyWarehouseLimitInfoClient(companyId).then(setLimitInfo);
       toast({
         title: "Éxito",
         description: "Bodega guardada correctamente.",
@@ -200,7 +212,7 @@ export default function WarehousesPage({
     } catch (err) {
       toast({
         title: "Error",
-        description: "Error al guardar la bodega.",
+        description: err instanceof Error ? err.message : "Error al guardar la bodega.",
         variant: "destructive",
       });
     } finally {
@@ -230,7 +242,12 @@ export default function WarehousesPage({
 
         <Dialog open={open} onOpenChange={handleOpenChange}>
           <DialogTrigger asChild>
-            <Button>+ Nuevo Almacén</Button>
+            <Button
+              disabled={limitReached}
+              title={limitReached ? "Límite de plan alcanzado" : undefined}
+            >
+              + Nuevo Almacén
+            </Button>
           </DialogTrigger>
           <DialogContent className="sm:max-w-[425px]">
             <DialogHeader>
@@ -319,7 +336,8 @@ export default function WarehousesPage({
                       size="icon"
                       className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50"
                       aria-label="Activar almacén"
-                      disabled={activatingId === wh.id}
+                      title={limitReached ? "Límite de plan alcanzado" : undefined}
+                      disabled={activatingId === wh.id || limitReached}
                       onClick={() => handleActivate(wh)}
                     >
                       <CheckCircle className="h-4 w-4" />

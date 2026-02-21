@@ -41,18 +41,23 @@ export type Establishment = {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
+type LimitInfo = { count: number; limit: number };
+
 type EstablishmentDialogProps = {
   companyId: string;
   initialData?: Establishment | null;
+  limitInfo?: LimitInfo;
 };
 
-export function EstablishmentDialog({ companyId, initialData = null }: EstablishmentDialogProps) {
+export function EstablishmentDialog({ companyId, initialData = null, limitInfo }: EstablishmentDialogProps) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
 
   const isEditing = Boolean(initialData);
+  const limitReached =
+    limitInfo && limitInfo.limit >= 0 && limitInfo.count >= limitInfo.limit;
 
   const { register, handleSubmit, formState: { errors }, reset } = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -92,7 +97,7 @@ export function EstablishmentDialog({ companyId, initialData = null }: Establish
 
     try {
       const url = initialData
-        ? `${API_BASE}/establishments/${initialData.id}`
+        ? `${API_BASE}/establishments/${initialData.id}?companyId=${encodeURIComponent(companyId)}`
         : `${API_BASE}/establishments/company/${companyId}`;
       const method = initialData ? "PATCH" : "POST";
 
@@ -118,9 +123,10 @@ export function EstablishmentDialog({ companyId, initialData = null }: Establish
       });
     } catch (error) {
       console.error(error);
+      const message = error instanceof Error ? error.message : "No se pudo guardar los cambios";
       toast({
         title: "Error",
-        description: "No se pudo guardar los cambios",
+        description: message,
         variant: "destructive",
       });
     } finally {
@@ -136,7 +142,13 @@ export function EstablishmentDialog({ companyId, initialData = null }: Establish
             <Pencil className="h-4 w-4" />
           </Button>
         ) : (
-          <Button className="bg-slate-900">+ Nueva Sucursal</Button>
+          <Button
+            className="bg-slate-900"
+            disabled={limitReached}
+            title={limitReached ? "Límite de plan alcanzado" : undefined}
+          >
+            + Nueva Sucursal
+          </Button>
         )}
       </DialogTrigger>
       <DialogContent className="sm:max-w-[500px]">

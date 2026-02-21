@@ -7,6 +7,11 @@ import { UpdateEmissionPointDto } from './dto/update-emission-point.dto';
 export class EmissionPointsController {
   constructor(private readonly emissionPointsService: EmissionPointsService) {}
 
+  @Get('company/:companyId/limit-info')
+  getLimitInfo(@Param('companyId') companyId: string) {
+    return this.emissionPointsService.getEmissionPointLimitInfo(companyId);
+  }
+
   @Post('establishment/:establishmentId')
   create(@Param('establishmentId') establishmentId: string, @Body() dto: CreateEmissionPointDto) {
     return this.emissionPointsService.create(establishmentId, dto);

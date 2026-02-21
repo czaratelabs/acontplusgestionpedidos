@@ -15,9 +15,12 @@ import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AdminGuard } from '../common/guards/admin.guard';
+import { ModuleEnabledGuard } from '../common/guards/module-enabled.guard';
+import { ModuleEnabled } from '../common/decorators/module-enabled.decorator';
 
 @Controller('roles')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, ModuleEnabledGuard)
+@ModuleEnabled('admin_roles')
 export class RolesController {
   constructor(private readonly service: RolesService) {}
 

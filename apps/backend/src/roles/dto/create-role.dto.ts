@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsBoolean, MinLength } from 'class-validator';
+import { IsString, IsOptional, IsBoolean, IsObject, MinLength } from 'class-validator';
 
 export class CreateRoleDto {
   @IsString()
@@ -16,4 +16,8 @@ export class CreateRoleDto {
   @IsOptional()
   @IsString()
   companyId?: string | null;
+
+  @IsOptional()
+  @IsObject()
+  permissions?: Record<string, unknown>;
 }

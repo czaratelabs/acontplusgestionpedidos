@@ -13,6 +13,7 @@ import { TaxesModule } from './taxes/taxes.module';
 import { ContactsModule } from './contacts/contacts.module';
 import { SystemSettingsModule } from './system-settings/system-settings.module';
 import { AuditLogsModule } from './audit-logs/audit-logs.module';
+import { BusinessRulesModule } from './business-rules/business-rules.module';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { AuditLogsModule } from './audit-logs/audit-logs.module';
     ContactsModule,       // Company#contacts
     SystemSettingsModule, // Company#settings
     AuditLogsModule,   // GET /audit-logs
+    BusinessRulesModule,
   ],
   providers: [AuditSubscriber],
 })

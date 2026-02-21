@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Warehouse } from './entities/warehouse.entity';
 import { Establishment } from '../establishments/entities/establishment.entity';
+import { CompaniesService } from '../companies/companies.service';
 import { CreateWarehouseDto } from './dto/create-warehouse.dto';
 import { UpdateWarehouseDto } from './dto/update-warehouse.dto';
 
@@ -13,6 +14,7 @@ export class WarehousesService {
     private warehouseRepo: Repository<Warehouse>,
     @InjectRepository(Establishment)
     private establishmentRepo: Repository<Establishment>,
+    private companiesService: CompaniesService,
   ) {}
 
   async create(establishmentId: string, dto: CreateWarehouseDto): Promise<Warehouse> {
@@ -22,11 +24,20 @@ export class WarehousesService {
     });
     if (!establishment) throw new NotFoundException('Establecimiento no encontrado');
 
+    const companyId = establishment.company?.id;
+    if (companyId) {
+      await this.companiesService.assertResourceLimit(companyId, 'max_warehouses', 'almacenes');
+    }
+
     const warehouse = this.warehouseRepo.create({
       ...dto,
       establishment,
     });
     return this.warehouseRepo.save(warehouse);
+  }
+
+  async getWarehouseLimitInfo(companyId: string): Promise<{ count: number; limit: number }> {
+    return this.companiesService.getWarehouseLimitInfo(companyId);
   }
 
   async findAllByEstablishment(establishmentId: string): Promise<Warehouse[]> {

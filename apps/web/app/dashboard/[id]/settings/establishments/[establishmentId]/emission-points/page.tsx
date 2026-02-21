@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, use } from "react";
+import { getCompanyEmissionPointLimitInfoClient } from "@/lib/api-client";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -63,8 +64,11 @@ export default function EmissionPointsPage({
   const [inactivateTarget, setInactivateTarget] = useState<EmissionPoint | null>(null);
   const [inactivating, setInactivating] = useState(false);
   const [activatingId, setActivatingId] = useState<string | null>(null);
+  const [limitInfo, setLimitInfo] = useState<{ count: number; limit: number }>({ count: 0, limit: -1 });
   const router = useRouter();
   const { toast } = useToast();
+
+  const limitReached = limitInfo.limit >= 0 && limitInfo.count >= limitInfo.limit;
 
   async function refetchPoints() {
     try {
@@ -82,6 +86,10 @@ export default function EmissionPointsPage({
     resolver: zodResolver(formSchema),
     defaultValues: { code: "001", name: "", ...defaultSequences },
   });
+
+  useEffect(() => {
+    getCompanyEmissionPointLimitInfoClient(companyId).then(setLimitInfo);
+  }, [companyId]);
 
   // Cargar puntos
   useEffect(() => {
@@ -144,24 +152,37 @@ export default function EmissionPointsPage({
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.message || "Error al guardar");
+        const msg = data.message || "Error al guardar";
+        if (res.status === 403) {
+          toast({
+            title: "Límite alcanzado",
+            description: "Has alcanzado el límite de Puntos de Emisión permitidos en tu plan actual. Contacta al administrador para mejorar tu suscripción.",
+            variant: "destructive",
+          });
+          throw new Error(msg);
+        }
+        throw new Error(msg);
       }
 
       setOpen(false);
       setEditingPoint(null);
       reset({ code: "001", name: "", ...defaultSequences });
       router.refresh();
+      getCompanyEmissionPointLimitInfoClient(companyId).then(setLimitInfo);
       toast({
         title: "Éxito",
         description: "Punto de emisión guardado/actualizado correctamente.",
         variant: "default",
       });
     } catch (error) {
-      toast({
-        title: "Error",
-        description: "Error al guardar el punto de emisión.",
-        variant: "destructive",
-      });
+      const desc = error instanceof Error ? error.message : "Error al guardar el punto de emisión.";
+      if (!desc.includes("Límite")) {
+        toast({
+          title: "Error",
+          description: desc,
+          variant: "destructive",
+        });
+      }
     } finally {
       setLoading(false);
     }
@@ -185,6 +206,7 @@ export default function EmissionPointsPage({
       setInactivateTarget(null);
       await refetchPoints();
       router.refresh();
+      getCompanyEmissionPointLimitInfoClient(companyId).then(setLimitInfo);
       toast({
         title: "Éxito",
         description: "Punto de emisión inactivado correctamente.",
@@ -212,6 +234,7 @@ export default function EmissionPointsPage({
       if (!res.ok) throw new Error(data.message || "Error al activar");
       await refetchPoints();
       router.refresh();
+      getCompanyEmissionPointLimitInfoClient(companyId).then(setLimitInfo);
       toast({
         title: "Éxito",
         description: "Punto de emisión activado correctamente.",
@@ -235,7 +258,12 @@ export default function EmissionPointsPage({
 
         <Dialog open={open} onOpenChange={handleOpenChange}>
           <DialogTrigger asChild>
-            <Button>+ Nuevo Punto</Button>
+            <Button
+              disabled={limitReached}
+              title={limitReached ? "Límite de plan alcanzado" : undefined}
+            >
+              + Nuevo Punto de Emisión
+            </Button>
           </DialogTrigger>
           <DialogContent className="sm:max-w-[425px] max-h-[90vh] overflow-y-auto" aria-describedby={undefined}>
             <DialogHeader>
@@ -380,7 +408,8 @@ export default function EmissionPointsPage({
                       size="icon"
                       className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50"
                       aria-label="Activar punto de emisión"
-                      disabled={activatingId === point.id}
+                      title={limitReached ? "Límite de plan alcanzado" : undefined}
+                      disabled={activatingId === point.id || limitReached}
                       onClick={() => handleActivate(point)}
                     >
                       <CheckCircle className="h-4 w-4" />

@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Establishment } from './entities/establishment.entity';
 import { Company } from '../companies/entities/company.entity';
+import { CompaniesService } from '../companies/companies.service';
 import { CreateEstablishmentDto } from './dto/create-establishment.dto';
 import { UpdateEstablishmentDto } from './dto/update-establishment.dto';
 
@@ -13,17 +14,24 @@ export class EstablishmentsService {
     private establishmentRepo: Repository<Establishment>,
     @InjectRepository(Company)
     private companyRepo: Repository<Company>,
+    private companiesService: CompaniesService,
   ) {}
 
   async create(companyId: string, dto: CreateEstablishmentDto) {
     const company = await this.companyRepo.findOneBy({ id: companyId });
     if (!company) throw new NotFoundException('Empresa no encontrada');
 
+    await this.companiesService.assertResourceLimit(companyId, 'max_establishments', 'establecimientos');
+
     const newEstablishment = this.establishmentRepo.create({
       ...dto,
       company,
     });
     return this.establishmentRepo.save(newEstablishment);
+  }
+
+  async getEstablishmentLimitInfo(companyId: string): Promise<{ count: number; limit: number }> {
+    return this.companiesService.getEstablishmentLimitInfo(companyId);
   }
 
   async findAllByCompany(companyId: string) {

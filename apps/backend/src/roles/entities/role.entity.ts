@@ -24,6 +24,9 @@ export class Role {
   @Column({ name: 'company_id', type: 'uuid', nullable: true })
   companyId: string | null;
 
+  @Column({ type: 'jsonb', default: {} })
+  permissions: Record<string, unknown>;
+
   @ManyToOne(() => Company, { onDelete: 'CASCADE', nullable: true })
   @JoinColumn({ name: 'company_id' })
   company: Company | null;

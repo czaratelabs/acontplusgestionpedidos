@@ -27,13 +27,14 @@ export class AuthController {
   @Post('select-company')
   async selectCompany(
     @Headers('authorization') auth: string,
-    @Body() body: { companyId: string },
+    @Body() body: { companyId?: string | null },
   ) {
     const token = auth?.startsWith('Bearer ') ? auth.slice(7) : auth;
-    if (!token || !body?.companyId) {
-      throw new BadRequestException('Se requiere sessionToken y companyId');
+    if (!token) {
+      throw new BadRequestException('Se requiere sessionToken');
     }
-    return this.authService.selectCompany(token, body.companyId);
+    // companyId can be null for SUPER_ADMIN global access
+    return this.authService.selectCompany(token, body?.companyId ?? null);
   }
 
   @Public()
