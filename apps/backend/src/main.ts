@@ -2,6 +2,7 @@
 process.env.TZ = 'America/Guayaquil';
 
 import { NestFactory } from '@nestjs/core';
+import { join } from 'path';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { ClsService } from './common/cls/cls-context.service';
 import { DataSource } from 'typeorm';
@@ -43,6 +44,10 @@ async function bootstrap() {
     }),
   );
   app.use(cookieParser());
+
+  // Static files for uploads (article images)
+  const express = await import('express');
+  app.use('/uploads', express.static(join(process.cwd(), 'uploads')));
 
   // CORS: frontend Next.js suele ir en 3000, backend en 3001
   app.enableCors({

@@ -49,3 +49,6 @@ ios/Podfile.lock
 
 # --- Coverage / Testing ---
 coverage/
+
+# --- Backend uploads ---
+uploads/

@@ -15,17 +15,26 @@ export class UserMultiCompanyRoles1740000000000 implements MigrationInterface {
       )
     `);
 
-    // 2. Insert default roles (ignore if already exist)
+    // 2. Asegurar constraint único (por si la tabla existía sin él)
+    await queryRunner.query(`
+      DO $$
+      BEGIN
+        ALTER TABLE "roles" ADD CONSTRAINT "UQ_roles_name" UNIQUE ("name");
+      EXCEPTION WHEN duplicate_object THEN NULL;
+      END $$;
+    `);
+
+    // 3. Insert default roles (ignore if already exist)
     await queryRunner.query(`
       INSERT INTO "roles" ("name", "description")
       VALUES
         ('owner', 'Propietario de la empresa'),
         ('admin', 'Administrador'),
         ('seller', 'Vendedor')
-      ON CONFLICT (name) DO NOTHING
+      ON CONFLICT ON CONSTRAINT "UQ_roles_name" DO NOTHING
     `);
 
-    // 3. Create user_companies table
+    // 4. Create user_companies table
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS "user_companies" (
         "id" uuid NOT NULL DEFAULT uuid_generate_v4(),
@@ -48,7 +57,7 @@ export class UserMultiCompanyRoles1740000000000 implements MigrationInterface {
       `CREATE INDEX IF NOT EXISTS "IDX_user_companies_company_id" ON "user_companies" ("company_id")`,
     );
 
-    // 4. Migrate existing data: users -> user_companies (only if users still has company_id and role)
+    // 5. Migrate existing data: users -> user_companies (only if users still has company_id and role)
     const usersTable = await queryRunner.getTable('users');
     const hasCompanyId = usersTable?.columns.some((c) => c.name === 'company_id');
     const hasRole = usersTable?.columns.some((c) => c.name === 'role');
@@ -66,7 +75,7 @@ export class UserMultiCompanyRoles1740000000000 implements MigrationInterface {
       `);
     }
 
-    // 5. Drop FK on users.company_id (find and drop by column)
+    // 6. Drop FK on users.company_id (find and drop by column)
     const companyIdFk = usersTable?.foreignKeys.find(
       (fk) => fk.columnNames.includes('company_id'),
     );
@@ -74,7 +83,7 @@ export class UserMultiCompanyRoles1740000000000 implements MigrationInterface {
       await queryRunner.dropForeignKey('users', companyIdFk);
     }
 
-    // 6. Drop company_id and role columns from users
+    // 7. Drop company_id and role columns from users
     await queryRunner.query(`ALTER TABLE "users" DROP COLUMN IF EXISTS "company_id"`);
     await queryRunner.query(`ALTER TABLE "users" DROP COLUMN IF EXISTS "role"`);
   }

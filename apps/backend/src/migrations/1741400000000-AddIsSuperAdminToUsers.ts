@@ -1,17 +1,16 @@
-import { MigrationInterface, QueryRunner, TableColumn } from 'typeorm';
+import { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class AddIsSuperAdminToUsers1741400000000 implements MigrationInterface {
   name = 'AddIsSuperAdminToUsers1741400000000';
 
   async up(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.addColumn(
-      'users',
-      new TableColumn({
-        name: 'is_super_admin',
-        type: 'boolean',
-        default: false,
-      }),
-    );
+    const table = await queryRunner.getTable('users');
+    const hasColumn = table?.columns.some((c) => c.name === 'is_super_admin');
+    if (!hasColumn) {
+      await queryRunner.query(
+        `ALTER TABLE "users" ADD "is_super_admin" boolean NOT NULL DEFAULT false`,
+      );
+    }
 
     // Mark superadmin@acontplus.com as SuperAdmin and remove from user_companies (fully decoupled)
     await queryRunner.query(`

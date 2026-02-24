@@ -136,3 +136,116 @@ export async function getEstablishments(companyId: string) {
     return [];
   }
 }
+
+// Artículos (Parent-Variant)
+export async function getArticles(companyId: string) {
+  try {
+    const authHeaders = await getAuthHeaders();
+    const res = await fetch(`${API_BASE}/articles/company/${companyId}`, {
+      cache: "no-store",
+      headers: authHeaders,
+    });
+    if (!res.ok) return [];
+    return res.json();
+  } catch {
+    return [];
+  }
+}
+
+export async function getBrands(companyId: string) {
+  try {
+    const authHeaders = await getAuthHeaders();
+    const res = await fetch(`${API_BASE}/articles/catalogs/company/${companyId}/brands`, {
+      cache: "no-store",
+      headers: authHeaders,
+    });
+    if (!res.ok) return [];
+    return res.json();
+  } catch {
+    return [];
+  }
+}
+
+export async function getCategories(companyId: string) {
+  try {
+    const authHeaders = await getAuthHeaders();
+    const res = await fetch(`${API_BASE}/articles/catalogs/company/${companyId}/categories`, {
+      cache: "no-store",
+      headers: authHeaders,
+    });
+    if (!res.ok) return [];
+    return res.json();
+  } catch {
+    return [];
+  }
+}
+
+export async function getMeasures(companyId: string) {
+  try {
+    const authHeaders = await getAuthHeaders();
+    const res = await fetch(`${API_BASE}/articles/catalogs/company/${companyId}/measures`, {
+      cache: "no-store",
+      headers: authHeaders,
+    });
+    if (!res.ok) return [];
+    return res.json();
+  } catch {
+    return [];
+  }
+}
+
+export async function getColors(companyId: string) {
+  try {
+    const authHeaders = await getAuthHeaders();
+    const res = await fetch(`${API_BASE}/articles/catalogs/company/${companyId}/colors`, {
+      cache: "no-store",
+      headers: authHeaders,
+    });
+    if (!res.ok) return [];
+    return res.json();
+  } catch {
+    return [];
+  }
+}
+
+export async function getSizes(companyId: string) {
+  try {
+    const authHeaders = await getAuthHeaders();
+    const res = await fetch(`${API_BASE}/articles/catalogs/company/${companyId}/sizes`, {
+      cache: "no-store",
+      headers: authHeaders,
+    });
+    if (!res.ok) return [];
+    return res.json();
+  } catch {
+    return [];
+  }
+}
+
+export async function getFlavors(companyId: string) {
+  try {
+    const authHeaders = await getAuthHeaders();
+    const res = await fetch(`${API_BASE}/articles/catalogs/company/${companyId}/flavors`, {
+      cache: "no-store",
+      headers: authHeaders,
+    });
+    if (!res.ok) return [];
+    return res.json();
+  } catch {
+    return [];
+  }
+}
+
+export async function getTaxes(companyId: string) {
+  try {
+    const authHeaders = await getAuthHeaders();
+    const res = await fetch(`${API_BASE}/taxes/company/${companyId}`, {
+      cache: "no-store",
+      headers: authHeaders,
+    });
+    if (!res.ok) return [];
+    return res.json();
+  } catch {
+    return [];
+  }
+}

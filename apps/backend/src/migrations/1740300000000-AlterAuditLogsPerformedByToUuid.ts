@@ -12,7 +12,7 @@ export class AlterAuditLogsPerformedByToUuid1740300000000
       UPDATE audit_logs 
       SET performed_by = NULL
       WHERE performed_by IS NOT NULL 
-        AND performed_by !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+        AND performed_by::text !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
     `);
 
     // Step 2: Drop the foreign key constraint if it exists (TypeORM may have created it)

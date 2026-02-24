@@ -14,6 +14,7 @@ import { ContactsModule } from './contacts/contacts.module';
 import { SystemSettingsModule } from './system-settings/system-settings.module';
 import { AuditLogsModule } from './audit-logs/audit-logs.module';
 import { BusinessRulesModule } from './business-rules/business-rules.module';
+import { ArticlesModule } from './articles/articles.module';
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { BusinessRulesModule } from './business-rules/business-rules.module';
     SystemSettingsModule, // Company#settings
     AuditLogsModule,   // GET /audit-logs
     BusinessRulesModule,
+    ArticlesModule,    // Parent-Variant articles (logistics)
   ],
   providers: [AuditSubscriber],
 })

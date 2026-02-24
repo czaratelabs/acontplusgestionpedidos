@@ -57,24 +57,34 @@ export class CreateSubscriptionPlansAndLinkToCompanies1740800000000 implements M
         )
     `);
 
-    await queryRunner.addColumn(
-      'companies',
-      new TableColumn({
-        name: 'plan_id',
-        type: 'uuid',
-        isNullable: true,
-      }),
-    );
+    const hasPlanIdColumn = await queryRunner.query(`
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'companies' AND column_name = 'plan_id'
+    `);
+    if (hasPlanIdColumn.length === 0) {
+      await queryRunner.addColumn(
+        'companies',
+        new TableColumn({
+          name: 'plan_id',
+          type: 'uuid',
+          isNullable: true,
+        }),
+      );
+    }
 
-    await queryRunner.createForeignKey(
-      'companies',
-      new TableForeignKey({
-        columnNames: ['plan_id'],
-        referencedTableName: 'subscription_plans',
-        referencedColumnNames: ['id'],
-        onDelete: 'SET NULL',
-      }),
-    );
+    const companiesTable = await queryRunner.getTable('companies');
+    const hasPlanIdFk = companiesTable?.foreignKeys.some((k) => k.columnNames.includes('plan_id'));
+    if (!hasPlanIdFk) {
+      await queryRunner.createForeignKey(
+        'companies',
+        new TableForeignKey({
+          columnNames: ['plan_id'],
+          referencedTableName: 'subscription_plans',
+          referencedColumnNames: ['id'],
+          onDelete: 'SET NULL',
+        }),
+      );
+    }
   }
 
   async down(queryRunner: QueryRunner): Promise<void> {
