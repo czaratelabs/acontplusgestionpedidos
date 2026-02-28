@@ -136,7 +136,7 @@ type VariantRow = {
   sku: string;
   barcode: string;
   cost: string;
-  /** Valor mostrado para INC IVA; si no está definido se deriva de cost. Solo se actualiza en blur/enter (campo opuesto). */
+  /** Valor mostrado para INC IVA; si no está definido se deriva de cost. Sincronizado bidireccionalmente con cost. */
   costIncIva?: string;
   colorId: string;
   sizeId: string;
@@ -399,10 +399,143 @@ export function ArticleFormDialog({
     });
   }
 
+  /**
+   * Sincronización bidireccional de costes: al editar un campo, actualiza el otro usando IVA.
+   * Usa roundToFive para todos los cálculos. No dispara bucle infinito porque cada onChange
+   * solo actualiza estado (no re-dispara el onChange del otro campo).
+   */
+  function handleCostChange(variantIndex: number, rawValue: string) {
+    const ivaPct = taxId ? (taxes.find((t) => t.id === taxId)?.percentage ?? 0) : 0;
+    const costNum = parseFloat(rawValue) || 0;
+    const costRounded = roundToFive(costNum, 5);
+    const costIncIvaNum = costToCostIncIva(costRounded, ivaPct);
+    const costIncIvaStr = formatDecimal(roundToFive(costIncIvaNum, 5));
+    setVariants((prev) => {
+      const next = [...prev];
+      const v = next[variantIndex];
+      if (!v) return prev;
+      next[variantIndex] = { ...v, cost: rawValue, costIncIva: costIncIvaStr };
+      return next;
+    });
+  }
+
+  function handleCostIncIvaChange(variantIndex: number, rawValue: string) {
+    const ivaPct = taxId ? (taxes.find((t) => t.id === taxId)?.percentage ?? 0) : 0;
+    const costIncIvaNum = parseFloat(rawValue) || 0;
+    const costIncIvaRounded = roundToFive(costIncIvaNum, 5);
+    const costNum = costIncIvaToCost(costIncIvaRounded, ivaPct);
+    const costStr = formatDecimal(roundToFive(costNum, 5));
+    setVariants((prev) => {
+      const next = [...prev];
+      const v = next[variantIndex];
+      if (!v) return prev;
+      next[variantIndex] = { ...v, cost: costStr, costIncIva: rawValue };
+      return next;
+    });
+  }
+
   function updateVariantPriceField(variantIndex: number, field: keyof PricesRow, value: string) {
     setVariants((prev) => {
       const next = [...prev];
       (next[variantIndex].prices as Record<string, string>)[field] = value;
+      return next;
+    });
+  }
+
+  /**
+   * handleSalePriceCalculation: dispara al pulsar Enter o blur en celda Precio de Venta.
+   * Afecta solo a la fila actual. Validación: vacío, 0 o < cost → poner todo a 0.
+   * Si válido: PVP = precio_venta * (1 + IVA), % Rent, Valor Rent, Valor Rent INC IVA.
+   * Usa roundToFive en todos los resultados.
+   */
+  function handleSalePriceCalculation(variantIndex: number, key: number) {
+    const v = variants[variantIndex];
+    if (!v) return;
+    const cost = roundToFive(parseFloat(String(v.cost)) || 0, 5);
+    const ivaPct = taxId ? (taxes.find((t) => t.id === taxId)?.percentage ?? 0) : 0;
+    const costIncIva = ivaPct !== 0 ? roundToFive(cost * (1 + ivaPct / 100), 5) : cost;
+
+    const raw = v.prices[`precioVenta${key}` as keyof PricesRow];
+    const precioVentaNum = parseFloat(String(raw ?? "")) || 0;
+    const isEmpty = raw === "" || raw == null;
+    const isInvalid = isEmpty || precioVentaNum <= 0 || precioVentaNum <= cost;
+
+    setVariants((prev) => {
+      const next = [...prev];
+      const curr = next[variantIndex];
+      if (!curr?.prices) return prev;
+      const prices = { ...(curr.prices as Record<string, string>) };
+
+      if (isInvalid) {
+        prices[`precioVenta${key}`] = "0";
+        prices[`pvp${key}`] = "0";
+        prices[`porcentajeRentabilidad${key}`] = "0";
+        prices[`rentabilidad${key}`] = "0";
+        prices[`rentabilidadIncIva${key}`] = "0";
+      } else {
+        const pv = roundToFive(precioVentaNum, 5);
+        const pvp = roundToFive(pv * (1 + ivaPct / 100), 5);
+        const pctRent = cost > 0 ? roundToFive(((pv - cost) / cost) * 100, 5) : 0;
+        const valorRent = roundToFive(pv - cost, 5);
+        const valorRentIncIva = roundToFive(pvp - costIncIva, 5);
+
+        prices[`precioVenta${key}`] = formatDecimal(pv);
+        prices[`pvp${key}`] = formatDecimal(pvp);
+        prices[`porcentajeRentabilidad${key}`] = formatDecimal(pctRent);
+        prices[`rentabilidad${key}`] = formatDecimal(valorRent);
+        prices[`rentabilidadIncIva${key}`] = formatDecimal(valorRentIncIva);
+      }
+
+      next[variantIndex] = { ...curr, prices: prices as PricesRow };
+      return next;
+    });
+  }
+
+  /**
+   * handlePvpCalculation: dispara al pulsar Enter o blur en celda PVP.
+   * Afecta solo a la fila actual. Validación: vacío, 0 o < cost_inc_iva → poner todo a 0.
+   * Si válido: precio_venta = pvp/(1+IVA), % Rent (markup), Valor Rent, Valor Rent INC IVA.
+   * Usa roundToFive en todos los resultados.
+   */
+  function handlePvpCalculation(variantIndex: number, rowIndex: number) {
+    const v = variants[variantIndex];
+    if (!v) return;
+    const cost = roundToFive(parseFloat(String(v.cost)) || 0, 5);
+    const ivaPct = taxId ? (taxes.find((t) => t.id === taxId)?.percentage ?? 0) : 0;
+    const costIncIva = ivaPct !== 0 ? roundToFive(cost * (1 + ivaPct / 100), 5) : cost;
+
+    const raw = v.prices[`pvp${rowIndex}` as keyof PricesRow];
+    const pvpNum = parseFloat(String(raw ?? "")) || 0;
+    const isEmpty = raw === "" || raw == null;
+    const isInvalid = isEmpty || pvpNum <= 0 || pvpNum <= costIncIva;
+
+    setVariants((prev) => {
+      const next = [...prev];
+      const curr = next[variantIndex];
+      if (!curr?.prices) return prev;
+      const prices = { ...(curr.prices as Record<string, string>) };
+
+      if (isInvalid) {
+        prices[`precioVenta${rowIndex}`] = "0";
+        prices[`pvp${rowIndex}`] = "0";
+        prices[`porcentajeRentabilidad${rowIndex}`] = "0";
+        prices[`rentabilidad${rowIndex}`] = "0";
+        prices[`rentabilidadIncIva${rowIndex}`] = "0";
+      } else {
+        const pvp = roundToFive(pvpNum, 5);
+        const precioVenta = ivaPct !== 0 ? roundToFive(pvp / (1 + ivaPct / 100), 5) : pvp;
+        const pctRent = cost > 0 ? roundToFive(((precioVenta - cost) / cost) * 100, 5) : 0;
+        const valorRent = roundToFive(precioVenta - cost, 5);
+        const valorRentIncIva = roundToFive(pvp - costIncIva, 5);
+
+        prices[`precioVenta${rowIndex}`] = formatDecimal(precioVenta);
+        prices[`pvp${rowIndex}`] = formatDecimal(pvp);
+        prices[`porcentajeRentabilidad${rowIndex}`] = formatDecimal(pctRent);
+        prices[`rentabilidad${rowIndex}`] = formatDecimal(valorRent);
+        prices[`rentabilidadIncIva${rowIndex}`] = formatDecimal(valorRentIncIva);
+      }
+
+      next[variantIndex] = { ...curr, prices: prices as PricesRow };
       return next;
     });
   }
@@ -417,44 +550,109 @@ export function ArticleFormDialog({
   }
 
   /**
-   * Al Enter en Precio de Costo SIN IVA:
-   * - CRITICAL: No modificar NINGÚN campo de costo. Mantener ambos intactos.
-   * - Usar cost (raw) solo para calcular tarifas PVP 1-5 y redondear resultados.
-   * - Redirigir foco a PVP1.
+   * Validación estricta para % Rent: default to zero, zero-value short circuit.
+   * - Si vacío o < 0: normalizar a 0.
+   * - Si valor = 0: limpiar fila (Precio Venta, PVP, rentabilidades a 0) sin cálculo.
+   * - Si valor > 0: ejecutar cálculo completo.
    */
-  function applyCostSinIvaBlurOrEnter(variantIndex: number) {
+  function applyPctRentBlurOrEnter(variantIndex: number, key: number) {
     const v = variants[variantIndex];
     if (!v) return;
-    const rawSinIva = parseFloat(String(v.cost)) || 0;
-    refreshRentabilidadOnCostBlur(variantIndex, rawSinIva);
+    const raw = v.prices[`porcentajeRentabilidad${key}` as keyof PricesRow];
+    const numVal = parseFloat(String(raw ?? "")) || 0;
+    const finalVal = numVal < 0 || raw === "" || raw == null ? 0 : numVal;
+
+    if (finalVal === 0) {
+      setVariants((prev) => {
+        const next = [...prev];
+        const curr = next[variantIndex];
+        if (!curr?.prices) return prev;
+        const prices = { ...(curr.prices as Record<string, string>) };
+        prices[`porcentajeRentabilidad${key}`] = "0";
+        prices[`precioVenta${key}`] = "0";
+        prices[`pvp${key}`] = "0";
+        prices[`rentabilidad${key}`] = "0";
+        prices[`rentabilidadIncIva${key}`] = "0";
+        next[variantIndex] = { ...curr, prices: prices as PricesRow };
+        return next;
+      });
+    } else {
+      applyPvpCellBlurOrEnter(variantIndex, "pctRent", key);
+    }
   }
 
   /**
-   * Al Enter en Precio de Costo INC IVA:
-   * - CRITICAL: No modificar NINGÚN campo de costo. Mantener ambos intactos.
-   * - Derivar cost internamente para cálculos de tarifas (no actualizar state).
-   * - Calcular y redondear PVP 1-5 con roundToFive.
-   * - Redirigir foco a PVP1.
+   * Función unificada: Input Cost → Calcular 5 tarifas → Redondear (numeric 18,4) → Mover foco a PVP1.
+   * Única responsable del cálculo desde coste. Usada por ambos campos (SIN IVA e INC IVA).
+   * @param source Si "incIva", toma costSinIva desde costIncIva para evitar race con state asíncrono.
    */
-  function applyCostIncIvaBlurOrEnter(variantIndex: number) {
+  function handleCostToPriceCalculation(
+    variantIndex: number,
+    source?: "sinIva" | "incIva",
+    moveFocus?: boolean,
+  ) {
     const v = variants[variantIndex];
     if (!v) return;
     const ivaPct = taxId ? (taxes.find((t) => t.id === taxId)?.percentage ?? 0) : 0;
-    const rawIncIva = parseFloat(String(v.costIncIva ?? v.cost)) || 0;
 
-    const costSinIva = costIncIvaToCost(rawIncIva, ivaPct);
-    const roundedSinIva = roundToFive(costSinIva);
+    let costSinIva: number;
+    if (source === "incIva") {
+      const rawIncIva = parseFloat(String(v.costIncIva ?? v.cost)) || 0;
+      costSinIva = roundToFive(costIncIvaToCost(rawIncIva, ivaPct), 5);
+    } else {
+      costSinIva = roundToFive(parseFloat(String(v.cost)) || 0, 5);
+    }
 
-    refreshRentabilidadOnCostBlur(variantIndex, roundedSinIva);
+    refreshRentabilidadOnCostBlur(variantIndex, costSinIva);
+    if (moveFocus) focusPvp1WithScroll(variantIndex);
   }
 
-  /** Mueve el foco a pvp1 (primera celda PVP) con scroll suave para pipeline Cost -> PVP. */
+  /** Mueve el foco a pvp1 (primera celda PVP de la tabla Tarifas PVP) con scroll suave. */
   function focusPvp1WithScroll(variantIndex: number) {
     setTimeout(() => {
       const el = document.getElementById(`pvp-${variantIndex}-1`);
       if (el instanceof HTMLInputElement) {
         el.scrollIntoView({ behavior: "smooth", block: "nearest" });
         el.focus();
+      }
+    }, 0);
+  }
+
+  /** Mueve el foco a precio_venta1 (primera celda Precio Venta) con scroll suave. */
+  function focusPrecioVenta1WithScroll(variantIndex: number) {
+    setTimeout(() => {
+      const el = document.getElementById(`precioVenta-${variantIndex}-1`);
+      if (el instanceof HTMLInputElement) {
+        el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        el.focus();
+      }
+    }, 0);
+  }
+
+  /** Navegación vertical: Enter mueve al siguiente row o vuelve a 1 si está en 5. */
+  function focusPriceCellBelow(
+    variantIndex: number,
+    column: "precioVenta" | "pvp",
+    currentKey: number,
+  ) {
+    setTimeout(() => {
+      const nextKey = currentKey < 5 ? currentKey + 1 : 1;
+      const el = document.getElementById(`${column}-${variantIndex}-${nextKey}`);
+      if (el instanceof HTMLInputElement) {
+        el.focus();
+        el.select();
+      }
+    }, 0);
+  }
+
+  /** Navegación vertical en % Rent: Enter mueve al siguiente row o vuelve a 1 si está en 5. */
+  function focusPctRentBelow(variantIndex: number, currentKey: number) {
+    setTimeout(() => {
+      const nextKey = currentKey < 5 ? currentKey + 1 : 1;
+      const el = document.getElementById(`pctRent-${variantIndex}-${nextKey}`);
+      if (el instanceof HTMLInputElement) {
+        el.focus();
+        el.select();
       }
     }, 0);
   }
@@ -524,11 +722,17 @@ export function ArticleFormDialog({
         pvp = ivaPct === 0 ? precioVenta : precioVenta * (1 + ivaPct / 100);
       }
 
-      const valorRent = precioVenta - cost;
-      const valorRentIncIva = pvp - costIncIva;
+      const valorRent = roundToFive(precioVenta - cost, 5);
+      const valorRentIncIva = roundToFive(pvp - costIncIva, 5);
 
-      if (preserve !== "precioVenta") updatedPrices[`precioVenta${key}`] = formatDecimal(precioVenta);
-      if (preserve !== "pvp") updatedPrices[`pvp${key}`] = formatDecimal(pvp);
+      if (preserve !== "precioVenta") updatedPrices[`precioVenta${key}`] = formatDecimal(roundToFive(precioVenta, 5));
+      if (preserve !== "pvp") updatedPrices[`pvp${key}`] = formatDecimal(roundToFive(pvp, 5));
+      // Recalcular % Rent cuando la fuente es Precio de Venta o PVP: ((precioVenta - cost) / precioVenta) * 100
+      if (preserve === "precioVenta" || preserve === "pvp") {
+        const pctRentCalculated =
+          precioVenta > 0 ? roundToFive(((precioVenta - cost) / precioVenta) * 100, 5) : 0;
+        updatedPrices[`porcentajeRentabilidad${key}`] = formatDecimal(pctRentCalculated);
+      }
       updatedPrices[`rentabilidad${key}`] = formatDecimal(valorRent);
       updatedPrices[`rentabilidadIncIva${key}`] = formatDecimal(valorRentIncIva);
     }
@@ -547,14 +751,14 @@ export function ArticleFormDialog({
       const skipPvpUpdate = preserve === "pvp" || activeId === pvpInputId;
       const skipPrecioVentaUpdate = preserve === "precioVenta" || activeId === precioVentaInputId;
 
-      const roundedPvp = roundToFive(pvpVal);
+      const roundedPvp = roundToFive(pvpVal, 5);
       const pvpSource = skipPvpUpdate ? pvpVal : roundedPvp;
       if (!skipPvpUpdate) {
         updatedPrices[`pvp${key}`] = formatDecimal(roundedPvp);
       }
 
       const precioVentaFromPvp = ivaPct === 0 ? pvpSource : pvpSource / (1 + ivaPct / 100);
-      const roundedPrecioVenta = roundToFive(precioVentaFromPvp);
+      const roundedPrecioVenta = roundToFive(precioVentaFromPvp, 5);
       const precioVentaForRent = skipPrecioVentaUpdate
         ? parseFloat(updatedPrices[`precioVenta${key}`] ?? "0") || 0
         : roundedPrecioVenta;
@@ -562,8 +766,8 @@ export function ArticleFormDialog({
         updatedPrices[`precioVenta${key}`] = formatDecimal(roundedPrecioVenta);
       }
 
-      const roundedValorRent = roundToFive(precioVentaForRent - cost);
-      const roundedValorRentIncIva = roundToFive(pvpSource - costIncIva);
+      const roundedValorRent = roundToFive(precioVentaForRent - cost, 5);
+      const roundedValorRentIncIva = roundToFive(pvpSource - costIncIva, 5);
       updatedPrices[`rentabilidad${key}`] = formatDecimal(roundedValorRent);
       updatedPrices[`rentabilidadIncIva${key}`] = formatDecimal(roundedValorRentIncIva);
     }
@@ -980,14 +1184,14 @@ export function ArticleFormDialog({
                               min={0}
                               step={0.00001}
                               value={v.cost ?? ""}
-                              onChange={(e) => updateVariant(i, "cost", e.target.value)}
-                              onBlur={() => applyCostSinIvaBlurOrEnter(i)}
+                              onChange={(e) => handleCostChange(i, e.target.value)}
+                              onFocus={(e) => e.currentTarget.select()}
+                              onBlur={() => handleCostToPriceCalculation(i, "sinIva", false)}
                               onKeyDown={(e) => {
                                 if (e.key === "Enter") {
                                   e.preventDefault();
                                   e.stopPropagation();
-                                  applyCostSinIvaBlurOrEnter(i);
-                                  focusPvp1WithScroll(i);
+                                  handleCostToPriceCalculation(i, "sinIva", true);
                                 }
                               }}
                               className="h-8 mt-0.5 w-full"
@@ -1001,14 +1205,14 @@ export function ArticleFormDialog({
                               min={0}
                               step={0.00001}
                               value={v.costIncIva != null ? v.costIncIva : (v.cost === "" || v.cost == null) ? "" : formatCostIncIva(v.cost ?? 0, taxId ? (taxes.find((t) => t.id === taxId)?.percentage ?? 0) : 0)}
-                              onChange={(e) => updateVariant(i, "costIncIva", e.target.value)}
-                              onBlur={() => applyCostIncIvaBlurOrEnter(i)}
+                              onChange={(e) => handleCostIncIvaChange(i, e.target.value)}
+                              onFocus={(e) => e.currentTarget.select()}
+                              onBlur={() => handleCostToPriceCalculation(i, "incIva", false)}
                               onKeyDown={(e) => {
                                 if (e.key === "Enter") {
                                   e.preventDefault();
                                   e.stopPropagation();
-                                  applyCostIncIvaBlurOrEnter(i);
-                                  focusPvp1WithScroll(i);
+                                  handleCostToPriceCalculation(i, "incIva", true);
                                 }
                               }}
                               className="h-8 mt-0.5 w-full"
@@ -1055,12 +1259,14 @@ export function ArticleFormDialog({
                                         step={0.00001}
                                         value={v.prices[`precioVenta${key}` as keyof PricesRow] ?? ""}
                                         onChange={(e) => updateVariantPriceField(i, `precioVenta${key}` as keyof PricesRow, e.target.value)}
-                                        onBlur={() => applyPvpCellBlurOrEnter(i, "precioVenta", key)}
+                                        onFocus={(e) => e.currentTarget.select()}
+                                        onBlur={() => handleSalePriceCalculation(i, key)}
                                         onKeyDown={(e) => {
                                           if (e.key === "Enter") {
                                             e.preventDefault();
                                             e.stopPropagation();
-                                            applyPvpCellBlurOrEnter(i, "precioVenta", key);
+                                            handleSalePriceCalculation(i, key);
+                                            focusPriceCellBelow(i, "precioVenta", key);
                                           }
                                         }}
                                         className="h-7 w-full min-w-[7rem] max-w-[8.5rem] text-xs"
@@ -1074,12 +1280,14 @@ export function ArticleFormDialog({
                                         step={0.00001}
                                         value={v.prices[`pvp${key}` as keyof PricesRow] ?? ""}
                                         onChange={(e) => updateVariantPriceField(i, `pvp${key}` as keyof PricesRow, e.target.value)}
-                                        onBlur={() => applyPvpCellBlurOrEnter(i, "pvp", key)}
+                                        onFocus={(e) => e.currentTarget.select()}
+                                        onBlur={() => handlePvpCalculation(i, key)}
                                         onKeyDown={(e) => {
                                           if (e.key === "Enter") {
                                             e.preventDefault();
                                             e.stopPropagation();
-                                            applyPvpCellBlurOrEnter(i, "pvp", key);
+                                            handlePvpCalculation(i, key);
+                                            focusPriceCellBelow(i, "pvp", key);
                                           }
                                         }}
                                         className="h-7 w-full min-w-[7rem] max-w-[8.5rem] text-xs"
@@ -1094,12 +1302,14 @@ export function ArticleFormDialog({
                                         placeholder="%"
                                         value={v.prices[`porcentajeRentabilidad${key}` as keyof PricesRow] ?? ""}
                                         onChange={(e) => updateVariantPriceField(i, `porcentajeRentabilidad${key}` as keyof PricesRow, e.target.value)}
-                                        onBlur={() => applyPvpCellBlurOrEnter(i, "pctRent", key)}
+                                        onFocus={(e) => e.currentTarget.select()}
+                                        onBlur={() => applyPctRentBlurOrEnter(i, key)}
                                         onKeyDown={(e) => {
                                           if (e.key === "Enter") {
                                             e.preventDefault();
                                             e.stopPropagation();
-                                            applyPvpCellBlurOrEnter(i, "pctRent", key);
+                                            applyPctRentBlurOrEnter(i, key);
+                                            focusPctRentBelow(i, key);
                                           }
                                         }}
                                         className="h-7 w-full min-w-[5.5rem] max-w-[6.5rem] text-xs"
