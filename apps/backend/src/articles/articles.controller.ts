@@ -29,7 +29,7 @@ import { ModuleEnabled } from '../common/decorators/module-enabled.decorator';
 
 @Controller('articles')
 @UseGuards(JwtAuthGuard, ModuleEnabledGuard)
-@ModuleEnabled('logistics')
+@ModuleEnabled('logistics', 'Tu plan no incluye el módulo de Inventario. Contacta al administrador para actualizar tu suscripción.')
 export class ArticlesController {
   constructor(
     private readonly articlesService: ArticlesService,
@@ -43,6 +43,14 @@ export class ArticlesController {
     @Query('q') q: string,
   ) {
     return this.articlesService.searchVariant(companyId, q ?? '');
+  }
+
+  @Get('company/:companyId/search-variants')
+  searchVariants(
+    @Param('companyId') companyId: string,
+    @Query('q') q: string,
+  ) {
+    return this.articlesService.searchVariants(companyId, q ?? '');
   }
 
   @Get('company/:companyId')
@@ -155,5 +163,26 @@ export class ArticlesController {
     @Query('companyId') companyId: string,
   ) {
     return this.articlesService.removeBatch(variantId, companyId ?? '', batchId);
+  }
+
+  @Patch('variants/:variantId/cost')
+  updateVariantCost(
+    @Param('variantId') variantId: string,
+    @Query('companyId') companyId: string,
+    @Body('cost') cost: number,
+  ) {
+    const num = Number(cost);
+    if (Number.isNaN(num) || num < 0) {
+      throw new BadRequestException('Costo debe ser un número >= 0');
+    }
+    return this.articlesService.updateVariantCost(variantId, companyId ?? '', num);
+  }
+
+  @Post('variants/:variantId/recalculate-prices')
+  recalculatePrices(
+    @Param('variantId') variantId: string,
+    @Query('companyId') companyId: string,
+  ) {
+    return this.articlesService.recalculatePrices(variantId, companyId ?? '');
   }
 }

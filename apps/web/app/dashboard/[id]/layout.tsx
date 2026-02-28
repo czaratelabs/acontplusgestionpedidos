@@ -16,6 +16,7 @@ type PlanWithModules = { id: string; name: string; modules?: Record<string, bool
 type Company = { id: string; plan?: { modules?: Record<string, boolean> } | null };
 
 const MODULE_KEYS = {
+  logistics: "logistics",
   directory_clients: "directory_clients",
   directory_providers: "directory_providers",
   directory_employees: "directory_employees",
@@ -145,7 +146,7 @@ export default async function DashboardLayout({
               <div className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-2 mt-2 px-3">Operaciones</div>
               <MenuLink href={`/dashboard/${id}`} icon={<span>📊</span>}>Panel Principal</MenuLink>
               <MenuLink href={`/dashboard/${id}/pos`} icon={<span>🛒</span>}>Punto de Venta</MenuLink>
-              <MenuLink href={`/dashboard/${id}/inventory`} icon={<span>📦</span>}>Inventario</MenuLink>
+              <MenuOrLocked moduleKey="logistics" href={`/dashboard/${id}/inventory`} label="Inventario" icon={<span>📦</span>} moduleName="El módulo de Inventario" />
 
               <div className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-2 mt-8 px-3">Directorio</div>
               <MenuOrLocked moduleKey="directory_clients" href={`/dashboard/${id}/contacts/clients`} label="Clientes" icon={<Users className="h-4 w-4" />} moduleName="El módulo de Clientes" />

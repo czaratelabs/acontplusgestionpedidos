@@ -14,6 +14,7 @@ import { CreateArticleDto } from './dto/create-article.dto';
 import { UpdateArticleDto } from './dto/update-article.dto';
 import { CreateBatchDto } from './dto/create-batch.dto';
 import { UpdateBatchDto } from './dto/update-batch.dto';
+import { CompaniesService } from '../companies/companies.service';
 
 @Injectable()
 export class ArticlesService {
@@ -28,6 +29,7 @@ export class ArticlesService {
     private readonly imageRepo: Repository<ArticleImage>,
     @InjectRepository(ArticleVariantBatch)
     private readonly batchRepo: Repository<ArticleVariantBatch>,
+    private readonly companiesService: CompaniesService,
   ) {}
 
   /**
@@ -55,12 +57,61 @@ export class ArticlesService {
         new Brackets((qb) => {
           qb.where('LOWER(v.barcode) = LOWER(:q)', { q: trimmed })
             .orWhere('LOWER(v.sku) = LOWER(:q)', { q: trimmed })
+            .orWhere('LOWER(a.code) = LOWER(:q)', { q: trimmed })
             .orWhere("a.search_vector @@ plainto_tsquery('spanish', :q)", { q: trimmed });
         }),
       )
       .getOne();
 
     return variant;
+  }
+
+  /**
+   * Búsqueda para Punto de Venta: si q es el Código Maestro, devuelve todas las variantes
+   * de ese artículo; si no, devuelve una lista con la variante encontrada por SKU/barcode/FTS.
+   */
+  async searchVariants(companyId: string, q: string): Promise<ArticleVariant[]> {
+    const trimmed = (q ?? '').trim();
+    if (!trimmed) return [];
+
+    const baseQb = () =>
+      this.variantRepo
+        .createQueryBuilder('v')
+        .leftJoinAndSelect('v.article', 'a')
+        .leftJoinAndSelect('v.prices', 'p')
+        .leftJoinAndSelect('v.color', 'vcolor')
+        .leftJoinAndSelect('v.size', 'vsize')
+        .leftJoinAndSelect('v.flavor', 'vflavor')
+        .leftJoinAndSelect('a.brand', 'b')
+        .leftJoinAndSelect('a.category', 'c')
+        .leftJoinAndSelect('a.tax', 't')
+        .where('v.company_id = :companyId', { companyId })
+        .andWhere('v.is_active = true');
+
+    const byCode = await baseQb()
+      .andWhere('LOWER(a.code) = LOWER(:q)', { q: trimmed })
+      .orderBy('v.sku', 'ASC')
+      .getMany();
+    if (byCode.length > 0) return byCode;
+
+    const byBarcodeOrSku = await baseQb()
+      .andWhere(
+        new Brackets((qb) => {
+          qb.where('LOWER(v.barcode) = LOWER(:q)', { q: trimmed }).orWhere(
+            'LOWER(v.sku) = LOWER(:q)',
+            { q: trimmed },
+          );
+        }),
+      )
+      .getOne();
+    if (byBarcodeOrSku) return [byBarcodeOrSku];
+
+    const byFts = await baseQb()
+      .andWhere("a.search_vector @@ plainto_tsquery('spanish', :q)", { q: trimmed })
+      .getOne();
+    if (byFts) return [byFts];
+
+    return [];
   }
 
   async findAll(companyId: string): Promise<Article[]> {
@@ -106,11 +157,21 @@ export class ArticlesService {
   }
 
   async create(companyId: string, dto: CreateArticleDto): Promise<Article> {
-    if (!dto.variants?.length) {
-      throw new ConflictException('Debe incluir al menos una variante');
+    await this.companiesService.assertResourceLimit(companyId, 'max_inventory_items', 'artículos');
+
+    const codeTrimmed = dto.code?.trim();
+    if (!codeTrimmed) {
+      throw new ConflictException('El código maestro es obligatorio');
+    }
+    const existingCode = await this.articleRepo.findOne({
+      where: { companyId, code: codeTrimmed },
+    });
+    if (existingCode) {
+      throw new ConflictException('Ya existe un artículo con ese código en esta empresa');
     }
 
     const article = this.articleRepo.create({
+      code: codeTrimmed,
       name: dto.name.trim(),
       brandId: dto.brandId || null,
       categoryId: dto.categoryId || null,
@@ -120,10 +181,12 @@ export class ArticlesService {
     });
     const saved = await this.articleRepo.save(article);
 
-    for (const vdto of dto.variants) {
+    const variantsToCreate = dto.variants?.filter((v) => v?.sku?.trim()) ?? [];
+    for (const vdto of variantsToCreate) {
       const variant = this.variantRepo.create({
         articleId: saved.id,
         companyId,
+        articleCode: codeTrimmed,
         sku: vdto.sku.trim(),
         barcode: vdto.barcode?.trim() || null,
         cost: vdto.cost ?? 0,
@@ -134,22 +197,27 @@ export class ArticlesService {
         measureId: vdto.measureId || null,
         stockActual: vdto.stockActual ?? 0,
         stockMin: vdto.stockMin ?? 0,
+        weight: vdto.weight ?? 0,
         observations: vdto.observations?.trim() || null,
       });
       const savedV = await this.variantRepo.save(variant);
 
-      if (vdto.prices?.length) {
-        for (const pdto of vdto.prices) {
-          const price = this.priceRepo.create({
-            articleVariantId: savedV.id,
-            priceType: pdto.priceType.trim(),
-            price: pdto.price,
-            isDefault: pdto.isDefault ?? false,
-            unitId: pdto.unitId || null,
-          });
-          await this.priceRepo.save(price);
-        }
-      }
+      const pdto = vdto.prices;
+      const price = this.priceRepo.create({
+        articleVariantId: savedV.id,
+        precioVenta1: pdto?.precioVenta1 ?? 0,
+        precioVenta2: pdto?.precioVenta2 ?? 0,
+        precioVenta3: pdto?.precioVenta3 ?? 0,
+        precioVenta4: pdto?.precioVenta4 ?? 0,
+        precioVenta5: pdto?.precioVenta5 ?? 0,
+        pvp1: pdto?.pvp1 ?? 0,
+        pvp2: pdto?.pvp2 ?? 0,
+        pvp3: pdto?.pvp3 ?? 0,
+        pvp4: pdto?.pvp4 ?? 0,
+        pvp5: pdto?.pvp5 ?? 0,
+        unitId: pdto?.unitId || null,
+      });
+      await this.priceRepo.save(price);
     }
 
     return this.findOne(saved.id);
@@ -159,6 +227,20 @@ export class ArticlesService {
     const article = await this.articleRepo.findOne({ where: { id, companyId } });
     if (!article) throw new NotFoundException('Artículo no encontrado');
 
+    if (dto.code != null) {
+      const codeTrimmed = dto.code.trim();
+      if (codeTrimmed) {
+        const existingCode = await this.articleRepo.findOne({
+          where: { companyId, code: codeTrimmed },
+        });
+        if (existingCode && existingCode.id !== id) {
+          throw new ConflictException('Ya existe un artículo con ese código en esta empresa');
+        }
+        article.code = codeTrimmed;
+      } else {
+        article.code = null;
+      }
+    }
     if (dto.name != null) article.name = dto.name.trim();
     if (dto.brandId !== undefined) article.brandId = dto.brandId || null;
     if (dto.categoryId !== undefined) article.categoryId = dto.categoryId || null;
@@ -175,6 +257,7 @@ export class ArticlesService {
       for (const vdto of dto.variants) {
         const existingV = existing.find((e) => e.sku === vdto.sku);
         if (existingV) {
+          if (article.code) existingV.articleCode = article.code;
           existingV.barcode = vdto.barcode?.trim() || null;
           existingV.cost = vdto.cost ?? existingV.cost;
           existingV.colorId = vdto.colorId ?? existingV.colorId;
@@ -184,26 +267,46 @@ export class ArticlesService {
           existingV.measureId = vdto.measureId ?? existingV.measureId;
           existingV.stockActual = vdto.stockActual ?? existingV.stockActual;
           existingV.stockMin = vdto.stockMin ?? existingV.stockMin;
+          existingV.weight = vdto.weight ?? existingV.weight;
           existingV.observations = vdto.observations?.trim() ?? existingV.observations;
           await this.variantRepo.save(existingV);
-          if (vdto.prices?.length) {
-            await this.priceRepo.delete({ articleVariantId: existingV.id });
-            for (const pdto of vdto.prices) {
-              await this.priceRepo.save(
-                this.priceRepo.create({
-                  articleVariantId: existingV.id,
-                  priceType: pdto.priceType.trim(),
-                  price: pdto.price,
-                  isDefault: pdto.isDefault ?? false,
-                  unitId: pdto.unitId || null,
-                }),
-              );
-            }
+          const pdto = vdto.prices;
+          const existingPrice = await this.priceRepo.findOne({ where: { articleVariantId: existingV.id } });
+          if (existingPrice) {
+            existingPrice.precioVenta1 = pdto?.precioVenta1 ?? existingPrice.precioVenta1;
+            existingPrice.precioVenta2 = pdto?.precioVenta2 ?? existingPrice.precioVenta2;
+            existingPrice.precioVenta3 = pdto?.precioVenta3 ?? existingPrice.precioVenta3;
+            existingPrice.precioVenta4 = pdto?.precioVenta4 ?? existingPrice.precioVenta4;
+            existingPrice.precioVenta5 = pdto?.precioVenta5 ?? existingPrice.precioVenta5;
+            existingPrice.pvp1 = pdto?.pvp1 ?? existingPrice.pvp1;
+            existingPrice.pvp2 = pdto?.pvp2 ?? existingPrice.pvp2;
+            existingPrice.pvp3 = pdto?.pvp3 ?? existingPrice.pvp3;
+            existingPrice.pvp4 = pdto?.pvp4 ?? existingPrice.pvp4;
+            existingPrice.pvp5 = pdto?.pvp5 ?? existingPrice.pvp5;
+            existingPrice.unitId = pdto?.unitId ?? existingPrice.unitId;
+            await this.priceRepo.save(existingPrice);
+          } else {
+            const newPrice = this.priceRepo.create({
+              articleVariantId: existingV.id,
+              precioVenta1: pdto?.precioVenta1 ?? 0,
+              precioVenta2: pdto?.precioVenta2 ?? 0,
+              precioVenta3: pdto?.precioVenta3 ?? 0,
+              precioVenta4: pdto?.precioVenta4 ?? 0,
+              precioVenta5: pdto?.precioVenta5 ?? 0,
+              pvp1: pdto?.pvp1 ?? 0,
+              pvp2: pdto?.pvp2 ?? 0,
+              pvp3: pdto?.pvp3 ?? 0,
+              pvp4: pdto?.pvp4 ?? 0,
+              pvp5: pdto?.pvp5 ?? 0,
+              unitId: pdto?.unitId || null,
+            });
+            await this.priceRepo.save(newPrice);
           }
         } else {
           const variant = this.variantRepo.create({
             articleId: id,
             companyId,
+            articleCode: article.code || null,
             sku: vdto.sku.trim(),
             barcode: vdto.barcode?.trim() || null,
             cost: vdto.cost ?? 0,
@@ -214,27 +317,63 @@ export class ArticlesService {
             measureId: vdto.measureId || null,
             stockActual: vdto.stockActual ?? 0,
             stockMin: vdto.stockMin ?? 0,
+            weight: vdto.weight ?? 0,
             observations: vdto.observations?.trim() || null,
           });
           const savedV = await this.variantRepo.save(variant);
-          if (vdto.prices?.length) {
-            for (const pdto of vdto.prices) {
-              await this.priceRepo.save(
-                this.priceRepo.create({
-                  articleVariantId: savedV.id,
-                  priceType: pdto.priceType.trim(),
-                  price: pdto.price,
-                  isDefault: pdto.isDefault ?? false,
-                  unitId: pdto.unitId || null,
-                }),
-              );
-            }
-          }
+          const pdto = vdto.prices;
+          const newPrice = this.priceRepo.create({
+            articleVariantId: savedV.id,
+            precioVenta1: pdto?.precioVenta1 ?? 0,
+            precioVenta2: pdto?.precioVenta2 ?? 0,
+            precioVenta3: pdto?.precioVenta3 ?? 0,
+            precioVenta4: pdto?.precioVenta4 ?? 0,
+            precioVenta5: pdto?.precioVenta5 ?? 0,
+            pvp1: pdto?.pvp1 ?? 0,
+            pvp2: pdto?.pvp2 ?? 0,
+            pvp3: pdto?.pvp3 ?? 0,
+            pvp4: pdto?.pvp4 ?? 0,
+            pvp5: pdto?.pvp5 ?? 0,
+            unitId: pdto?.unitId || null,
+          });
+          await this.priceRepo.save(newPrice);
         }
       }
     }
 
     return this.findOne(id);
+  }
+
+  /**
+   * Actualiza el costo de una variante y recalcula rentabilidades (trigger BD).
+   * Devuelve la fila de precios con rentabilidad1-5 actualizadas.
+   */
+  async updateVariantCost(
+    variantId: string,
+    companyId: string,
+    cost: number,
+  ): Promise<ArticleVariantPrice> {
+    const variant = await this.variantRepo.findOne({ where: { id: variantId, companyId } });
+    if (!variant) throw new NotFoundException('Variante no encontrada');
+    variant.cost = cost;
+    await this.variantRepo.save(variant);
+    return this.recalculatePrices(variantId, companyId);
+  }
+
+  /**
+   * Recalcula rentabilidades disparando el trigger de BD (save sin cambiar precios).
+   * Útil cuando el costo de la variante cambia.
+   */
+  async recalculatePrices(variantId: string, companyId: string): Promise<ArticleVariantPrice> {
+    const variant = await this.variantRepo.findOne({ where: { id: variantId, companyId } });
+    if (!variant) throw new NotFoundException('Variante no encontrada');
+    const price = await this.priceRepo.findOne({ where: { articleVariantId: variantId } });
+    if (!price) throw new NotFoundException('No hay precios para esta variante');
+    await this.priceRepo.save(price);
+    return this.priceRepo.findOneOrFail({
+      where: { id: price.id },
+      relations: ['unit'],
+    });
   }
 
   async remove(id: string, companyId: string): Promise<void> {

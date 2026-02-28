@@ -41,7 +41,13 @@ type Brand = { id: string; name: string };
 type Category = { id: string; name: string };
 type Tax = { id: string; name: string; percentage: number };
 
-type Price = { priceType: string; price: number; isDefault: boolean };
+type VariantPrice = {
+  rentabilidad1?: number;
+  rentabilidad2?: number;
+  rentabilidad3?: number;
+  rentabilidad4?: number;
+  rentabilidad5?: number;
+};
 type Variant = {
   id: string;
   sku: string;
@@ -56,12 +62,13 @@ type Variant = {
   measure?: string | null;
   stockActual: number;
   stockMin: number;
-  prices?: Price[];
+  prices?: VariantPrice[];
 };
 
 type ArticleImage = { id: string; url: string; isMain: boolean; sortOrder: number };
 type Article = {
   id: string;
+  code?: string | null;
   name: string;
   brandId?: string | null;
   categoryId?: string | null;
@@ -131,6 +138,11 @@ export function ArticlesTable({ companyId, articles, brands, categories, taxes, 
               <TableHead>Marca</TableHead>
               <TableHead>Categoría</TableHead>
               <TableHead>Variantes</TableHead>
+              <TableHead className="text-right">Rent. 1</TableHead>
+              <TableHead className="text-right">Rent. 2</TableHead>
+              <TableHead className="text-right">Rent. 3</TableHead>
+              <TableHead className="text-right">Rent. 4</TableHead>
+              <TableHead className="text-right">Rent. 5</TableHead>
               <TableHead>Impuesto</TableHead>
               <TableHead className="text-right">Acciones</TableHead>
             </TableRow>
@@ -138,15 +150,20 @@ export function ArticlesTable({ companyId, articles, brands, categories, taxes, 
           <TableBody>
             {articles.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-center text-slate-500 py-12">
+                <TableCell colSpan={12} className="text-center text-slate-500 py-12">
                   No hay artículos. Crea uno para comenzar.
                 </TableCell>
               </TableRow>
             ) : (
-              articles.map((a) => (
+              articles.map((a) => {
+                const firstPrices = a.variants?.[0]?.prices?.[0];
+                return (
                 <TableRow key={a.id}>
                   <TableCell><ArticleThumbnail article={a} /></TableCell>
-                  <TableCell className="font-medium">{a.name}</TableCell>
+                  <TableCell>
+                    <div className="font-medium">{a.name}</div>
+                    {a.code && <div className="text-xs text-slate-500">{a.code}</div>}
+                  </TableCell>
                   <TableCell>{a.brand?.name ?? "—"}</TableCell>
                   <TableCell>{a.category?.name ?? "—"}</TableCell>
                   <TableCell>
@@ -163,6 +180,21 @@ export function ArticlesTable({ companyId, articles, brands, categories, taxes, 
                         </span>
                       ))}
                     </div>
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums text-xs">
+                    {firstPrices?.rentabilidad1 != null ? Number(firstPrices.rentabilidad1).toFixed(2) : "—"}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums text-xs">
+                    {firstPrices?.rentabilidad2 != null ? Number(firstPrices.rentabilidad2).toFixed(2) : "—"}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums text-xs">
+                    {firstPrices?.rentabilidad3 != null ? Number(firstPrices.rentabilidad3).toFixed(2) : "—"}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums text-xs">
+                    {firstPrices?.rentabilidad4 != null ? Number(firstPrices.rentabilidad4).toFixed(2) : "—"}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums text-xs">
+                    {firstPrices?.rentabilidad5 != null ? Number(firstPrices.rentabilidad5).toFixed(2) : "—"}
                   </TableCell>
                   <TableCell>{a.tax?.name ?? "—"}</TableCell>
                   <TableCell className="text-right">
@@ -187,7 +219,8 @@ export function ArticlesTable({ companyId, articles, brands, categories, taxes, 
                     </div>
                   </TableCell>
                 </TableRow>
-              ))
+              );
+              })
             )}
           </TableBody>
         </Table>

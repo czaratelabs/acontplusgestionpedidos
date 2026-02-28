@@ -4,6 +4,7 @@ import { Company } from '../../companies/entities/company.entity';
 export const SYSTEM_TIMEZONE_KEY = 'SYSTEM_TIMEZONE';
 export const SYSTEM_CURRENCY_KEY = 'SYSTEM_CURRENCY';
 export const SYSTEM_DATE_FORMAT_KEY = 'SYSTEM_DATE_FORMAT';
+export const TARIFF_NAMES_KEY = 'TARIFF_NAMES';
 
 @Entity('system_settings')
 @Unique(['company', 'key'])

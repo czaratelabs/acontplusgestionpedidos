@@ -1,6 +1,7 @@
 import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { getDatabaseConfig } from './data-source';
 import { ClsModule } from './common/cls/cls.module';
 import { AuthClsMiddleware } from './common/auth-cls.middleware';
 import { AuditSubscriber } from './audit-logs/audit.subscriber';
@@ -22,11 +23,8 @@ import { ArticlesModule } from './articles/articles.module';
     ClsModule,
     TypeOrmModule.forRoot({
       type: 'postgres',
-      host: process.env.DB_HOST || 'localhost',
-      port: 5432,
-      username: process.env.DB_USERNAME || 'admin',
-      password: process.env.DB_PASSWORD || 'adminpassword',
-      database: process.env.DB_DATABASE || 'erp_db',
+      ...getDatabaseConfig(),
+      ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
       autoLoadEntities: true,
       synchronize: false,
       subscribers: [TimestampSubscriber],

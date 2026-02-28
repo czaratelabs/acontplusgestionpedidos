@@ -3,6 +3,7 @@ import {
   Column,
   PrimaryGeneratedColumn,
   ManyToOne,
+  JoinColumn,
   CreateDateColumn,
   UpdateDateColumn,
 } from 'typeorm';
@@ -23,6 +24,7 @@ export class Warehouse {
   isActive: boolean;
 
   @ManyToOne(() => Establishment, (establishment) => establishment.warehouses)
+  @JoinColumn({ name: 'establishment_id' })
   establishment: Establishment;
 
   @CreateDateColumn({ name: 'created_at' })

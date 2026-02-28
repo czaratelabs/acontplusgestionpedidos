@@ -27,6 +27,11 @@ export class ContactsModuleGuard implements CanActivate {
     if (user?.isSuperAdmin === true || user?.role?.toUpperCase() === 'SUPER_ADMIN') {
       return true;
     }
+    // Los planes controlan acceso a formularios y límites, no las acciones dentro del formulario.
+    const method = request.method?.toUpperCase();
+    if (method === 'PATCH' || method === 'PUT' || method === 'DELETE') {
+      return true;
+    }
     let companyId = request.params?.companyId as string;
     if (!companyId?.trim()) {
       const resourceId = request.params?.id as string | undefined;

@@ -1,4 +1,4 @@
-import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, CreateDateColumn, UpdateDateColumn, JoinColumn } from 'typeorm';
 import { Establishment } from '../../establishments/entities/establishment.entity';
 
 @Entity('emission_points')
@@ -32,6 +32,7 @@ export class EmissionPoint {
 
   // Relación: Muchos puntos pertenecen a UN establecimiento
   @ManyToOne(() => Establishment, (establishment) => establishment.emissionPoints)
+  @JoinColumn({ name: 'establishment_id' })
   establishment: Establishment;
 
   @CreateDateColumn()

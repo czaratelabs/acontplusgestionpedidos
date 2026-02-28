@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, Star, Upload } from "lucide-react";
+import { Plus, Trash2, Star, Upload, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,6 +26,12 @@ import {
 import { CatalogSelectWithCreate } from "@/components/catalog-select-with-create";
 import type { CatalogItem } from "@/lib/api-client";
 import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
   Table,
   TableBody,
   TableCell,
@@ -37,13 +43,81 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useToast } from "@/components/ui/use-toast";
 import { format, differenceInDays } from "date-fns";
 import { es } from "date-fns/locale";
+import {
+  formatDecimal,
+  formatCostIncIva,
+  costToCostIncIva,
+  costIncIvaToCost,
+} from "@/lib/cost-iva";
+import { roundToFive } from "@/lib/math.util";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
-const PRICE_TYPES = [
-  { value: "pvp", label: "PVP (Retail)" },
-  { value: "wholesale", label: "Mayorista" },
-  { value: "promo", label: "Promoción" },
-];
+
+const TARIFF_NAMES_KEY = "TARIFF_NAMES";
+const TARIFAS_KEYS = [1, 2, 3, 4, 5] as const;
+const DEFAULT_TARIFF_LABELS: Record<string, string> = {
+  "1": "Tarifa 1",
+  "2": "Tarifa 2",
+  "3": "Tarifa 3",
+  "4": "Tarifa 4",
+  "5": "Tarifa 5",
+};
+
+type PricesRow = {
+  precioVenta1: string;
+  precioVenta2: string;
+  precioVenta3: string;
+  precioVenta4: string;
+  precioVenta5: string;
+  pvp1: string;
+  pvp2: string;
+  pvp3: string;
+  pvp4: string;
+  pvp5: string;
+  porcentajeRentabilidad1?: string;
+  porcentajeRentabilidad2?: string;
+  porcentajeRentabilidad3?: string;
+  porcentajeRentabilidad4?: string;
+  porcentajeRentabilidad5?: string;
+  rentabilidad1?: string;
+  rentabilidad2?: string;
+  rentabilidad3?: string;
+  rentabilidad4?: string;
+  rentabilidad5?: string;
+  rentabilidadIncIva1?: string;
+  rentabilidadIncIva2?: string;
+  rentabilidadIncIva3?: string;
+  rentabilidadIncIva4?: string;
+  rentabilidadIncIva5?: string;
+};
+
+const emptyPrices = (): PricesRow => ({
+  precioVenta1: "0",
+  precioVenta2: "0",
+  precioVenta3: "0",
+  precioVenta4: "0",
+  precioVenta5: "0",
+  pvp1: "0",
+  pvp2: "0",
+  pvp3: "0",
+  pvp4: "0",
+  pvp5: "0",
+  porcentajeRentabilidad1: "0",
+  porcentajeRentabilidad2: "0",
+  porcentajeRentabilidad3: "0",
+  porcentajeRentabilidad4: "0",
+  porcentajeRentabilidad5: "0",
+  rentabilidad1: "0",
+  rentabilidad2: "0",
+  rentabilidad3: "0",
+  rentabilidad4: "0",
+  rentabilidad5: "0",
+  rentabilidadIncIva1: "0",
+  rentabilidadIncIva2: "0",
+  rentabilidadIncIva3: "0",
+  rentabilidadIncIva4: "0",
+  rentabilidadIncIva5: "0",
+});
 
 type Brand = { id: string; name: string };
 type Category = { id: string; name: string };
@@ -62,14 +136,15 @@ type VariantRow = {
   sku: string;
   barcode: string;
   cost: string;
+  /** Valor mostrado para INC IVA; si no está definido se deriva de cost. Solo se actualiza en blur/enter (campo opuesto). */
+  costIncIva?: string;
   colorId: string;
   sizeId: string;
   flavorId: string;
   measure: string;
-  stockActual: string;
-  stockMin: string;
+  weight: string;
   observations: string;
-  prices: { priceType: string; price: string; isDefault: boolean }[];
+  prices: PricesRow;
 };
 
 const emptyVariant = (): VariantRow => ({
@@ -80,10 +155,9 @@ const emptyVariant = (): VariantRow => ({
   sizeId: "",
   flavorId: "",
   measure: "",
-  stockActual: "0",
-  stockMin: "0",
+  weight: "0",
   observations: "",
-  prices: [{ priceType: "pvp", price: "", isDefault: true }],
+  prices: emptyPrices(),
 });
 
 function getBatchRowClass(expirationDate: string | null): string {
@@ -109,6 +183,7 @@ type ArticleFormDialogProps = {
   trigger?: React.ReactNode;
   initialData?: {
     id: string;
+    code?: string | null;
     name: string;
     observations?: string | null;
     brandId?: string | null;
@@ -129,8 +204,25 @@ type ArticleFormDialogProps = {
       measure?: string | null;
       stockActual: number;
       stockMin: number;
+      weight?: number;
       observations?: string | null;
-      prices?: Array<{ priceType: string; price: number; isDefault: boolean }>;
+      prices?: Array<{
+        precioVenta1?: number;
+        precioVenta2?: number;
+        precioVenta3?: number;
+        precioVenta4?: number;
+        precioVenta5?: number;
+        pvp1?: number;
+        pvp2?: number;
+        pvp3?: number;
+        pvp4?: number;
+        pvp5?: number;
+        rentabilidad1?: number;
+        rentabilidad2?: number;
+        rentabilidad3?: number;
+        rentabilidad4?: number;
+        rentabilidad5?: number;
+      }>;
       batches?: Batch[];
     }>;
   } | null;
@@ -164,6 +256,7 @@ export function ArticleFormDialog({
   const [localFlavors, setLocalFlavors] = useState<CatalogItem[]>(flavors);
   const [uploading, setUploading] = useState(false);
   const [activeTab, setActiveTab] = useState("general");
+  const [code, setCode] = useState("");
   const [name, setName] = useState("");
   const [observations, setObservations] = useState("");
   const [brandId, setBrandId] = useState<string>("");
@@ -174,10 +267,34 @@ export function ArticleFormDialog({
   const [variantsWithBatches, setVariantsWithBatches] = useState<
     Array<{ id: string; sku: string; batches: Batch[] }>
   >([]);
+  const [tariffLabels, setTariffLabels] = useState<Record<string, string>>({ ...DEFAULT_TARIFF_LABELS });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
   const { toast } = useToast();
   const isEditing = Boolean(initialData);
+
+  useEffect(() => {
+    if (!open || !companyId) return;
+    const controller = new AbortController();
+    fetch(`${API_BASE}/system-settings/${TARIFF_NAMES_KEY}?companyId=${encodeURIComponent(companyId)}`, {
+      credentials: "include",
+      signal: controller.signal,
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { value?: string } | null) => {
+        if (data?.value) {
+          try {
+            const parsed = JSON.parse(data.value) as Record<string, string>;
+            if (parsed && typeof parsed === "object")
+              setTariffLabels({ ...DEFAULT_TARIFF_LABELS, ...parsed });
+          } catch {
+            /* usar defaults */
+          }
+        }
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [open, companyId]);
 
   useEffect(() => {
     setLocalBrands(brands);
@@ -191,6 +308,7 @@ export function ArticleFormDialog({
   useEffect(() => {
     if (open) {
       if (initialData) {
+        setCode(initialData.code ?? "");
         setName(initialData.name);
         setObservations(initialData.observations ?? "");
         setBrandId(initialData.brandId ?? "");
@@ -210,24 +328,48 @@ export function ArticleFormDialog({
                 id: v.id,
                 sku: v.sku,
                 barcode: v.barcode ?? "",
-                cost: String(v.cost ?? 0),
+                cost: formatDecimal(v.cost ?? 0),
                 colorId: v.colorId ?? v.color?.id ?? "",
                 sizeId: v.sizeId ?? v.size?.id ?? "",
                 flavorId: v.flavorId ?? v.flavor?.id ?? "",
                 measure: v.measure ?? "",
-                stockActual: String(v.stockActual ?? 0),
-                stockMin: String(v.stockMin ?? 0),
+                weight: String(v.weight ?? 0),
                 observations: v.observations ?? "",
-                prices:
-                  (v.prices?.length ? v.prices : [{ priceType: "pvp", price: 0, isDefault: true }]).map((p) => ({
-                    priceType: p.priceType,
-                    price: String(p.price),
-                    isDefault: p.isDefault ?? false,
-                  })),
+                prices: (() => {
+                  const p = v.prices?.[0];
+                  return {
+                    precioVenta1: formatDecimal(p?.precioVenta1 ?? 0),
+                    precioVenta2: formatDecimal(p?.precioVenta2 ?? 0),
+                    precioVenta3: formatDecimal(p?.precioVenta3 ?? 0),
+                    precioVenta4: formatDecimal(p?.precioVenta4 ?? 0),
+                    precioVenta5: formatDecimal(p?.precioVenta5 ?? 0),
+                    pvp1: formatDecimal(p?.pvp1 ?? 0),
+                    pvp2: formatDecimal(p?.pvp2 ?? 0),
+                    pvp3: formatDecimal(p?.pvp3 ?? 0),
+                    pvp4: formatDecimal(p?.pvp4 ?? 0),
+                    pvp5: formatDecimal(p?.pvp5 ?? 0),
+                    porcentajeRentabilidad1: p?.porcentajeRentabilidad1 != null ? formatDecimal(p.porcentajeRentabilidad1) : "0",
+                    porcentajeRentabilidad2: p?.porcentajeRentabilidad2 != null ? formatDecimal(p.porcentajeRentabilidad2) : "0",
+                    porcentajeRentabilidad3: p?.porcentajeRentabilidad3 != null ? formatDecimal(p.porcentajeRentabilidad3) : "0",
+                    porcentajeRentabilidad4: p?.porcentajeRentabilidad4 != null ? formatDecimal(p.porcentajeRentabilidad4) : "0",
+                    porcentajeRentabilidad5: p?.porcentajeRentabilidad5 != null ? formatDecimal(p.porcentajeRentabilidad5) : "0",
+                    rentabilidad1: p?.rentabilidad1 != null ? formatDecimal(p.rentabilidad1) : "0",
+                    rentabilidad2: p?.rentabilidad2 != null ? formatDecimal(p.rentabilidad2) : "0",
+                    rentabilidad3: p?.rentabilidad3 != null ? formatDecimal(p.rentabilidad3) : "0",
+                    rentabilidad4: p?.rentabilidad4 != null ? formatDecimal(p.rentabilidad4) : "0",
+                    rentabilidad5: p?.rentabilidad5 != null ? formatDecimal(p.rentabilidad5) : "0",
+                    rentabilidadIncIva1: p?.rentabilidadIncIva1 != null ? formatDecimal(p.rentabilidadIncIva1) : "0",
+                    rentabilidadIncIva2: p?.rentabilidadIncIva2 != null ? formatDecimal(p.rentabilidadIncIva2) : "0",
+                    rentabilidadIncIva3: p?.rentabilidadIncIva3 != null ? formatDecimal(p.rentabilidadIncIva3) : "0",
+                    rentabilidadIncIva4: p?.rentabilidadIncIva4 != null ? formatDecimal(p.rentabilidadIncIva4) : "0",
+                    rentabilidadIncIva5: p?.rentabilidadIncIva5 != null ? formatDecimal(p.rentabilidadIncIva5) : "0",
+                  };
+                })(),
               }))
             : [emptyVariant()]
         );
       } else {
+        setCode("");
         setName("");
         setObservations("");
         setBrandId("");
@@ -257,34 +399,183 @@ export function ArticleFormDialog({
     });
   }
 
-  function addPriceToVariant(variantIndex: number) {
+  function updateVariantPriceField(variantIndex: number, field: keyof PricesRow, value: string) {
     setVariants((prev) => {
       const next = [...prev];
-      next[variantIndex].prices = [
-        ...next[variantIndex].prices,
-        { priceType: "pvp", price: "", isDefault: false },
-      ];
+      (next[variantIndex].prices as Record<string, string>)[field] = value;
       return next;
     });
   }
 
-  function removePriceFromVariant(variantIndex: number, priceIndex: number) {
-    setVariants((prev) => {
-      const next = [...prev];
-      next[variantIndex].prices = next[variantIndex].prices.filter((_, i) => i !== priceIndex);
-      return next;
-    });
+  /** Dispara recalc desde una celda PVP con Manual Input Preservation: el campo editado mantiene su valor raw. Sin redirección de foco para permitir navegación libre. */
+  function applyPvpCellBlurOrEnter(
+    variantIndex: number,
+    preserveField: "pctRent" | "precioVenta" | "pvp",
+    key: number,
+  ) {
+    refreshRentabilidadOnCostBlur(variantIndex, undefined, { field: preserveField, key });
   }
 
-  function updateVariantPrice(variantIndex: number, priceIndex: number, field: string, value: string | boolean) {
+  /**
+   * Al Enter en Precio de Costo SIN IVA:
+   * - CRITICAL: No modificar NINGÚN campo de costo. Mantener ambos intactos.
+   * - Usar cost (raw) solo para calcular tarifas PVP 1-5 y redondear resultados.
+   * - Redirigir foco a PVP1.
+   */
+  function applyCostSinIvaBlurOrEnter(variantIndex: number) {
+    const v = variants[variantIndex];
+    if (!v) return;
+    const rawSinIva = parseFloat(String(v.cost)) || 0;
+    refreshRentabilidadOnCostBlur(variantIndex, rawSinIva);
+  }
+
+  /**
+   * Al Enter en Precio de Costo INC IVA:
+   * - CRITICAL: No modificar NINGÚN campo de costo. Mantener ambos intactos.
+   * - Derivar cost internamente para cálculos de tarifas (no actualizar state).
+   * - Calcular y redondear PVP 1-5 con roundToFive.
+   * - Redirigir foco a PVP1.
+   */
+  function applyCostIncIvaBlurOrEnter(variantIndex: number) {
+    const v = variants[variantIndex];
+    if (!v) return;
+    const ivaPct = taxId ? (taxes.find((t) => t.id === taxId)?.percentage ?? 0) : 0;
+    const rawIncIva = parseFloat(String(v.costIncIva ?? v.cost)) || 0;
+
+    const costSinIva = costIncIvaToCost(rawIncIva, ivaPct);
+    const roundedSinIva = roundToFive(costSinIva);
+
+    refreshRentabilidadOnCostBlur(variantIndex, roundedSinIva);
+  }
+
+  /** Mueve el foco a pvp1 (primera celda PVP) con scroll suave para pipeline Cost -> PVP. */
+  function focusPvp1WithScroll(variantIndex: number) {
+    setTimeout(() => {
+      const el = document.getElementById(`pvp-${variantIndex}-1`);
+      if (el instanceof HTMLInputElement) {
+        el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        el.focus();
+      }
+    }, 0);
+  }
+
+  type PreserveSourceField = { field: "pctRent" | "precioVenta" | "pvp"; key: number };
+
+  function refreshRentabilidadOnCostBlur(
+    variantIndex: number,
+    costOverride?: string | number,
+    preserveSourceField?: PreserveSourceField,
+  ): boolean {
+    const v = variants[variantIndex];
+    if (!v) return false;
+    const cost = costOverride != null ? parseFloat(String(costOverride)) || 0 : parseFloat(v.cost) || 0;
+    const ivaPct = taxId ? (taxes.find((t) => t.id === taxId)?.percentage ?? 0) : 0;
+    const costIncIva = ivaPct !== 0 ? cost * (1 + ivaPct / 100) : cost;
+
+    if (cost <= 0 || costIncIva <= 0) {
+      toast({
+        title: "Costo inválido",
+        description: "El Precio de Costo SIN IVA e INC IVA debe ser mayor a cero.",
+        variant: "destructive",
+      });
+      const updatedPrices: Record<string, string> = { ...v.prices } as Record<string, string>;
+      for (const key of TARIFAS_KEYS) {
+        updatedPrices[`precioVenta${key}`] = "0";
+        updatedPrices[`pvp${key}`] = "0";
+        updatedPrices[`porcentajeRentabilidad${key}`] = "0";
+        updatedPrices[`rentabilidad${key}`] = "0";
+        updatedPrices[`rentabilidadIncIva${key}`] = "0";
+      }
+      setVariants((prev) => {
+        const next = [...prev];
+        const curr = next[variantIndex];
+        if (!curr?.prices) return prev;
+        next[variantIndex] = { ...curr, prices: updatedPrices as PricesRow };
+        return next;
+      });
+      return false;
+    }
+
+    const updatedPrices: Record<string, string> = { ...v.prices } as Record<string, string>;
+    for (const key of TARIFAS_KEYS) {
+      const preserve = preserveSourceField?.key === key ? preserveSourceField.field : null;
+
+      // Manual Input Preservation: nunca sobrescribir el campo fuente — mantener valor raw del usuario.
+      const pctRent = parseFloat(v.prices[`porcentajeRentabilidad${key}` as keyof PricesRow] ?? "0") || 0;
+      if (preserve !== "pctRent" && pctRent <= 0) {
+        if (preserve !== "precioVenta") updatedPrices[`precioVenta${key}`] = "0";
+        if (preserve !== "pvp") updatedPrices[`pvp${key}`] = "0";
+        updatedPrices[`rentabilidad${key}`] = "0";
+        updatedPrices[`rentabilidadIncIva${key}`] = "0";
+        continue;
+      }
+
+      let precioVenta: number;
+      let pvp: number;
+
+      if (preserve === "precioVenta") {
+        precioVenta = parseFloat(updatedPrices[`precioVenta${key}`] ?? "0") || 0;
+        pvp = ivaPct === 0 ? precioVenta : precioVenta * (1 + ivaPct / 100);
+      } else if (preserve === "pvp") {
+        pvp = parseFloat(updatedPrices[`pvp${key}`] ?? "0") || 0;
+        precioVenta = ivaPct === 0 ? pvp : pvp / (1 + ivaPct / 100);
+      } else {
+        precioVenta = cost + cost * (pctRent / 100);
+        pvp = ivaPct === 0 ? precioVenta : precioVenta * (1 + ivaPct / 100);
+      }
+
+      const valorRent = precioVenta - cost;
+      const valorRentIncIva = pvp - costIncIva;
+
+      if (preserve !== "precioVenta") updatedPrices[`precioVenta${key}`] = formatDecimal(precioVenta);
+      if (preserve !== "pvp") updatedPrices[`pvp${key}`] = formatDecimal(pvp);
+      updatedPrices[`rentabilidad${key}`] = formatDecimal(valorRent);
+      updatedPrices[`rentabilidadIncIva${key}`] = formatDecimal(valorRentIncIva);
+    }
+
+    // Depuración de decimales: roundToFive SOLO en celdas calculadas (dependientes). NUNCA en el campo fuente.
+    // Manual Input Preservation: omitir si tiene foco O si es el campo que disparó el recalc (preserveSourceField).
+    const activeId = typeof document !== "undefined" ? document.activeElement?.id ?? "" : "";
+    for (const key of TARIFAS_KEYS) {
+      const pvpVal = parseFloat(updatedPrices[`pvp${key}`] ?? "0") || 0;
+      if (pvpVal <= 0) continue;
+
+      const preserve = preserveSourceField?.key === key ? preserveSourceField.field : null;
+      const pvpInputId = `pvp-${variantIndex}-${key}`;
+      const precioVentaInputId = `precioVenta-${variantIndex}-${key}`;
+
+      const skipPvpUpdate = preserve === "pvp" || activeId === pvpInputId;
+      const skipPrecioVentaUpdate = preserve === "precioVenta" || activeId === precioVentaInputId;
+
+      const roundedPvp = roundToFive(pvpVal);
+      const pvpSource = skipPvpUpdate ? pvpVal : roundedPvp;
+      if (!skipPvpUpdate) {
+        updatedPrices[`pvp${key}`] = formatDecimal(roundedPvp);
+      }
+
+      const precioVentaFromPvp = ivaPct === 0 ? pvpSource : pvpSource / (1 + ivaPct / 100);
+      const roundedPrecioVenta = roundToFive(precioVentaFromPvp);
+      const precioVentaForRent = skipPrecioVentaUpdate
+        ? parseFloat(updatedPrices[`precioVenta${key}`] ?? "0") || 0
+        : roundedPrecioVenta;
+      if (!skipPrecioVentaUpdate) {
+        updatedPrices[`precioVenta${key}`] = formatDecimal(roundedPrecioVenta);
+      }
+
+      const roundedValorRent = roundToFive(precioVentaForRent - cost);
+      const roundedValorRentIncIva = roundToFive(pvpSource - costIncIva);
+      updatedPrices[`rentabilidad${key}`] = formatDecimal(roundedValorRent);
+      updatedPrices[`rentabilidadIncIva${key}`] = formatDecimal(roundedValorRentIncIva);
+    }
+
     setVariants((prev) => {
       const next = [...prev];
-      const p = next[variantIndex].prices[priceIndex];
-      if (field === "priceType") p.priceType = value as string;
-      else if (field === "price") p.price = value as string;
-      else if (field === "isDefault") p.isDefault = value as boolean;
+      const curr = next[variantIndex];
+      if (!curr?.prices) return prev;
+      next[variantIndex] = { ...curr, prices: updatedPrices as PricesRow };
       return next;
     });
+    return true;
   }
 
   async function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>, isMain = false) {
@@ -420,36 +711,25 @@ export function ArticleFormDialog({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!code.trim()) {
+      toast({ title: "Error", description: "El código de artículo (maestro) es obligatorio.", variant: "destructive" });
+      return;
+    }
     if (!name.trim()) {
       toast({ title: "Error", description: "El nombre es obligatorio.", variant: "destructive" });
       return;
     }
     const validVariants = variants.filter((v) => v.sku.trim());
-    if (!validVariants.length) {
-      toast({ title: "Error", description: "Añade al menos una variante con SKU.", variant: "destructive" });
-      return;
-    }
-    for (const v of validVariants) {
-      const hasPrice = v.prices.some((p) => p.price && !isNaN(parseFloat(p.price)));
-      if (!hasPrice) {
-        toast({
-          title: "Error",
-          description: `La variante ${v.sku || "sin SKU"} debe tener al menos un precio.`,
-          variant: "destructive",
-        });
-        return;
-      }
-    }
-
     setLoading(true);
     try {
       const payload = {
+        code: code.trim(),
         name: name.trim(),
         brandId: brandId || null,
         categoryId: categoryId || null,
         taxId: taxId || null,
         observations: observations.trim() || null,
-        variants: validVariants.map((v) => ({
+        variants: validVariants.length ? validVariants.map((v) => ({
           sku: v.sku.trim(),
           barcode: v.barcode.trim() || null,
           cost: parseFloat(v.cost) || 0,
@@ -457,17 +737,23 @@ export function ArticleFormDialog({
           sizeId: v.sizeId?.trim() || null,
           flavorId: v.flavorId?.trim() || null,
           measure: v.measure.trim() || null,
-          stockActual: parseFloat(v.stockActual) || 0,
-          stockMin: parseFloat(v.stockMin) || 0,
+          stockActual: 0,
+          stockMin: 0,
+          weight: parseFloat(v.weight) || 0,
           observations: v.observations?.trim() || null,
-          prices: v.prices
-            .filter((p) => p.price && !isNaN(parseFloat(p.price)))
-            .map((p) => ({
-              priceType: p.priceType,
-              price: parseFloat(p.price),
-              isDefault: p.isDefault,
-            })),
-        })),
+          prices: {
+            precioVenta1: parseFloat(v.prices.precioVenta1) || 0,
+            precioVenta2: parseFloat(v.prices.precioVenta2) || 0,
+            precioVenta3: parseFloat(v.prices.precioVenta3) || 0,
+            precioVenta4: parseFloat(v.prices.precioVenta4) || 0,
+            precioVenta5: parseFloat(v.prices.precioVenta5) || 0,
+            pvp1: parseFloat(v.prices.pvp1) || 0,
+            pvp2: parseFloat(v.prices.pvp2) || 0,
+            pvp3: parseFloat(v.prices.pvp3) || 0,
+            pvp4: parseFloat(v.prices.pvp4) || 0,
+            pvp5: parseFloat(v.prices.pvp5) || 0,
+          },
+        })) : [],
       };
 
       const url = isEditing
@@ -525,7 +811,7 @@ export function ArticleFormDialog({
         <DialogHeader>
           <DialogTitle>{isEditing ? "Editar Artículo" : "Nuevo Artículo"}</DialogTitle>
           <DialogDescription>
-            Completa la información general, variantes, inventario por lotes y fotos.
+            Puedes guardar solo los datos generales (código, nombre, marca, etc.) y añadir variantes después.
           </DialogDescription>
         </DialogHeader>
         <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -537,33 +823,10 @@ export function ArticleFormDialog({
           </TabsList>
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            <TabsContent value="general" className="space-y-4 mt-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <TabsContent value="general" className="space-y-3 mt-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 sm:gap-3">
                 <div>
-                  <Label htmlFor="name">Nombre base</Label>
-                  <Input
-                    id="name"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="Ej: Camiseta Básica"
-                  />
-                </div>
-                <div>
-                  <Label>Marca</Label>
-                  <CatalogSelectWithCreate
-                    companyId={companyId}
-                    catalogKey="brands"
-                    items={localBrands}
-                    value={brandId}
-                    onChange={setBrandId}
-                    onItemCreated={(item) => setLocalBrands((prev) => [...prev, item])}
-                    placeholder="Seleccionar marca"
-                    emptyLabel="— Sin marca —"
-                    valueKey="id"
-                  />
-                </div>
-                <div>
-                  <Label>Categoría</Label>
+                  <Label className="text-xs">Categoría</Label>
                   <CatalogSelectWithCreate
                     companyId={companyId}
                     catalogKey="categories"
@@ -574,12 +837,56 @@ export function ArticleFormDialog({
                     placeholder="Seleccionar categoría"
                     emptyLabel="— Sin categoría —"
                     valueKey="id"
+                    selectClassName="h-8 mt-0.5 w-full"
                   />
                 </div>
                 <div>
-                  <Label>Impuesto</Label>
+                  <Label className="text-xs">Marca</Label>
+                  <CatalogSelectWithCreate
+                    companyId={companyId}
+                    catalogKey="brands"
+                    items={localBrands}
+                    value={brandId}
+                    onChange={setBrandId}
+                    onItemCreated={(item) => setLocalBrands((prev) => [...prev, item])}
+                    placeholder="Seleccionar marca"
+                    emptyLabel="— Sin marca —"
+                    valueKey="id"
+                    selectClassName="h-8 mt-0.5 w-full"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="code" className="text-xs flex items-center gap-1">
+                    Código de artículo (Maestro)
+                    <span
+                      className="inline-flex text-slate-400 cursor-help"
+                      title="Este código identifica al modelo del producto y agrupa todas sus variantes."
+                    >
+                      <Info className="h-3 w-3" />
+                    </span>
+                  </Label>
+                  <Input
+                    id="code"
+                    value={code}
+                    onChange={(e) => setCode(e.target.value)}
+                    placeholder="Ej: CAM-001"
+                    className="h-8 mt-0.5 w-full"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="name" className="text-xs">Nombre base</Label>
+                  <Input
+                    id="name"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Ej: Camiseta Básica"
+                    className="h-8 mt-0.5 w-full"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">IVA</Label>
                   <Select value={taxId || "none"} onValueChange={(v) => setTaxId(v === "none" ? "" : v)}>
-                    <SelectTrigger>
+                    <SelectTrigger className="h-8 mt-0.5">
                       <SelectValue placeholder="Seleccionar impuesto" />
                     </SelectTrigger>
                     <SelectContent>
@@ -592,218 +899,317 @@ export function ArticleFormDialog({
                 </div>
               </div>
               <div>
-                <Label htmlFor="observations">Observaciones (artículo)</Label>
+                <Label htmlFor="observations" className="text-xs">Observaciones (artículo)</Label>
                 <Textarea
                   id="observations"
                   value={observations}
                   onChange={(e) => setObservations(e.target.value)}
                   placeholder="Notas generales sobre el artículo..."
-                  rows={3}
+                  rows={2}
+                  className="mt-0.5 min-h-[4.5rem] text-sm"
                 />
               </div>
             </TabsContent>
 
             <TabsContent value="variants" className="space-y-4 mt-4">
               <div className="flex justify-between items-center mb-2">
-                <Label>Variantes (SKU, código de barras, precios, atributos)</Label>
+                <Label>Variantes</Label>
                 <Button type="button" variant="outline" size="sm" onClick={addVariant}>
                   <Plus className="h-4 w-4 mr-1" />
                   Añadir variante
                 </Button>
               </div>
-              <div className="rounded-lg border overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-slate-50">
-                      <TableHead className="w-24">SKU</TableHead>
-                      <TableHead className="w-28">Cód. barras</TableHead>
-                      <TableHead className="w-20">Costo</TableHead>
-                      <TableHead className="w-20">Color</TableHead>
-                      <TableHead className="w-20">Talla</TableHead>
-                      <TableHead className="w-20">Sabor</TableHead>
-                      <TableHead className="w-20">Medida</TableHead>
-                      <TableHead className="w-20">Stock</TableHead>
-                      <TableHead>Observaciones</TableHead>
-                      <TableHead>Precios</TableHead>
-                      <TableHead className="w-12"></TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {variants.map((v, i) => (
-                      <TableRow key={i}>
-                        <TableCell>
-                          <Input
-                            value={v.sku}
-                            onChange={(e) => updateVariant(i, "sku", e.target.value)}
-                            placeholder="SKU001"
-                            className="h-8"
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Input
-                            value={v.barcode}
-                            onChange={(e) => updateVariant(i, "barcode", e.target.value)}
-                            placeholder="789..."
-                            className="h-8"
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Input
-                            type="number"
-                            min={0}
-                            step={0.01}
-                            value={v.cost}
-                            onChange={(e) => updateVariant(i, "cost", e.target.value)}
-                            className="h-8 w-20"
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <CatalogSelectWithCreate
-                            companyId={companyId}
-                            catalogKey="colors"
-                            items={localColors}
-                            value={v.colorId}
-                            onChange={(val) => updateVariant(i, "colorId", val)}
-                            onItemCreated={(item) => setLocalColors((prev) => [...prev, item])}
-                            emptyLabel="—"
-                            valueKey="id"
-                            selectClassName="min-w-[80px]"
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <CatalogSelectWithCreate
-                            companyId={companyId}
-                            catalogKey="sizes"
-                            items={localSizes}
-                            value={v.sizeId}
-                            onChange={(val) => updateVariant(i, "sizeId", val)}
-                            onItemCreated={(item) => setLocalSizes((prev) => [...prev, item])}
-                            emptyLabel="—"
-                            valueKey="id"
-                            selectClassName="min-w-[80px]"
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <CatalogSelectWithCreate
-                            companyId={companyId}
-                            catalogKey="flavors"
-                            items={localFlavors}
-                            value={v.flavorId}
-                            onChange={(val) => updateVariant(i, "flavorId", val)}
-                            onItemCreated={(item) => setLocalFlavors((prev) => [...prev, item])}
-                            emptyLabel="—"
-                            valueKey="id"
-                            selectClassName="min-w-[80px]"
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <CatalogSelectWithCreate
-                            companyId={companyId}
-                            catalogKey="measures"
-                            items={localMeasures}
-                            value={v.measure}
-                            onChange={(val) => updateVariant(i, "measure", val)}
-                            onItemCreated={(item) => setLocalMeasures((prev) => [...prev, item])}
-                            emptyLabel="—"
-                            valueKey="name"
-                            selectClassName="min-w-[80px]"
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex gap-1">
+              <div className="space-y-4">
+                {variants.map((v, i) => (
+                  <Card key={i} className="overflow-hidden">
+                    <CardHeader className="py-2.5 px-3 flex flex-row items-center justify-between space-y-0 bg-slate-50 border-b">
+                      <div>
+                        <CardTitle className="text-sm">Variante {i + 1}</CardTitle>
+                        <p className="text-xs text-slate-500 mt-0.5 font-normal">
+                          Código: <span className="font-medium text-slate-700">{code || "—"}</span>
+                          {" · "}
+                          Nombre: <span className="font-medium text-slate-700">{name || "—"}</span>
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        disabled={variants.length <= 1}
+                        onClick={() => removeVariant(i)}
+                        className="text-red-500 hover:text-red-700"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </CardHeader>
+                    <CardContent className="p-3 space-y-3">
+                      {/* Bloque principal: SKU, código barras, IVA (info), costo, medida y 5 tarifas PVP */}
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
+                          <div className="sm:col-span-2">
+                            <Label htmlFor={`sku-${i}`} className="text-xs">SKU</Label>
+                            <Input
+                              id={`sku-${i}`}
+                              value={v.sku}
+                              onChange={(e) => updateVariant(i, "sku", e.target.value)}
+                              placeholder="Ej: SKU001"
+                              className="h-8 mt-0.5 min-w-[140px]"
+                            />
+                          </div>
+                          <div className="sm:col-span-2">
+                            <Label htmlFor={`barcode-${i}`} className="text-xs">Código de barras</Label>
+                            <Input
+                              id={`barcode-${i}`}
+                              value={v.barcode}
+                              onChange={(e) => updateVariant(i, "barcode", e.target.value)}
+                              placeholder="Ej: 7891234567890"
+                              className="h-8 mt-0.5 min-w-[140px]"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-xs text-slate-500">IVA (informativo)</Label>
+                            <p className="text-xs font-medium text-slate-700 mt-0.5">
+                              {taxId ? (taxes.find((t) => t.id === taxId)?.percentage ?? "—") : "—"}%
+                            </p>
+                          </div>
+                          <div>
+                            <Label htmlFor={`cost-${i}`} className="text-xs">Precio de Costo SIN IVA</Label>
+                            <Input
+                              id={`cost-${i}`}
+                              type="number"
+                              min={0}
+                              step={0.00001}
+                              value={v.cost ?? ""}
+                              onChange={(e) => updateVariant(i, "cost", e.target.value)}
+                              onBlur={() => applyCostSinIvaBlurOrEnter(i)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  applyCostSinIvaBlurOrEnter(i);
+                                  focusPvp1WithScroll(i);
+                                }
+                              }}
+                              className="h-8 mt-0.5 w-full"
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor={`costIncIva-${i}`} className="text-xs">Precio de Costo INC. IVA</Label>
+                            <Input
+                              id={`costIncIva-${i}`}
+                              type="number"
+                              min={0}
+                              step={0.00001}
+                              value={v.costIncIva != null ? v.costIncIva : (v.cost === "" || v.cost == null) ? "" : formatCostIncIva(v.cost ?? 0, taxId ? (taxes.find((t) => t.id === taxId)?.percentage ?? 0) : 0)}
+                              onChange={(e) => updateVariant(i, "costIncIva", e.target.value)}
+                              onBlur={() => applyCostIncIvaBlurOrEnter(i)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  applyCostIncIvaBlurOrEnter(i);
+                                  focusPvp1WithScroll(i);
+                                }
+                              }}
+                              className="h-8 mt-0.5 w-full"
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor={`measure-${i}`} className="text-xs">Medida</Label>
+                            <CatalogSelectWithCreate
+                              companyId={companyId}
+                              catalogKey="measures"
+                              items={localMeasures}
+                              value={v.measure}
+                              onChange={(val) => updateVariant(i, "measure", val)}
+                              onItemCreated={(item) => setLocalMeasures((prev) => [...prev, item])}
+                              emptyLabel="— Seleccionar —"
+                              valueKey="name"
+                              selectClassName="h-8 mt-0.5 w-full"
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <Label className="mb-1 block text-xs">Tarifas PVP</Label>
+                          <div className="rounded border bg-slate-50/50 overflow-hidden max-w-4xl [&_th]:py-1 [&_th]:px-2 [&_td]:py-0.5 [&_td]:px-1.5">
+                            <Table>
+                              <TableHeader>
+                                <TableRow className="bg-slate-100 border-b">
+                                  <TableHead className="w-24 min-w-[6rem]">Tarifa</TableHead>
+                                  <TableHead className="min-w-[8rem]">Precio Venta</TableHead>
+                                  <TableHead className="min-w-[8rem]">PVP</TableHead>
+                                  <TableHead className="min-w-[6.5rem]">% Rent.</TableHead>
+                                  <TableHead className="min-w-[5.5rem]">Valor Rent.</TableHead>
+                                  <TableHead className="min-w-[5.5rem]">Valor Rent. INC IVA</TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {TARIFAS_KEYS.map((key) => (
+                                  <TableRow key={key} className="border-b last:border-0">
+                                    <TableCell className="font-medium text-xs">{tariffLabels[String(key)] ?? `Tarifa ${key}`}</TableCell>
+                                    <TableCell className="p-0.5">
+                                      <Input
+                                        id={`precioVenta-${i}-${key}`}
+                                        type="number"
+                                        min={0}
+                                        step={0.00001}
+                                        value={v.prices[`precioVenta${key}` as keyof PricesRow] ?? ""}
+                                        onChange={(e) => updateVariantPriceField(i, `precioVenta${key}` as keyof PricesRow, e.target.value)}
+                                        onBlur={() => applyPvpCellBlurOrEnter(i, "precioVenta", key)}
+                                        onKeyDown={(e) => {
+                                          if (e.key === "Enter") {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            applyPvpCellBlurOrEnter(i, "precioVenta", key);
+                                          }
+                                        }}
+                                        className="h-7 w-full min-w-[7rem] max-w-[8.5rem] text-xs"
+                                      />
+                                    </TableCell>
+                                    <TableCell className="p-0.5">
+                                      <Input
+                                        id={`pvp-${i}-${key}`}
+                                        type="number"
+                                        min={0}
+                                        step={0.00001}
+                                        value={v.prices[`pvp${key}` as keyof PricesRow] ?? ""}
+                                        onChange={(e) => updateVariantPriceField(i, `pvp${key}` as keyof PricesRow, e.target.value)}
+                                        onBlur={() => applyPvpCellBlurOrEnter(i, "pvp", key)}
+                                        onKeyDown={(e) => {
+                                          if (e.key === "Enter") {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            applyPvpCellBlurOrEnter(i, "pvp", key);
+                                          }
+                                        }}
+                                        className="h-7 w-full min-w-[7rem] max-w-[8.5rem] text-xs"
+                                      />
+                                    </TableCell>
+                                    <TableCell className="p-0.5">
+                                      <Input
+                                        id={`pctRent-${i}-${key}`}
+                                        type="number"
+                                        min={-100}
+                                        step={0.00001}
+                                        placeholder="%"
+                                        value={v.prices[`porcentajeRentabilidad${key}` as keyof PricesRow] ?? ""}
+                                        onChange={(e) => updateVariantPriceField(i, `porcentajeRentabilidad${key}` as keyof PricesRow, e.target.value)}
+                                        onBlur={() => applyPvpCellBlurOrEnter(i, "pctRent", key)}
+                                        onKeyDown={(e) => {
+                                          if (e.key === "Enter") {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            applyPvpCellBlurOrEnter(i, "pctRent", key);
+                                          }
+                                        }}
+                                        className="h-7 w-full min-w-[5.5rem] max-w-[6.5rem] text-xs"
+                                      />
+                                    </TableCell>
+                                    <TableCell className="py-0.5 px-1 min-w-[5rem]">
+                                      <span className="text-xs text-slate-600 tabular-nums">
+                                        {(v.prices[`rentabilidad${key}` as keyof PricesRow] ?? "") === "" ? "" : formatDecimal(v.prices[`rentabilidad${key}` as keyof PricesRow])}
+                                      </span>
+                                    </TableCell>
+                                    <TableCell className="py-0.5 px-1 min-w-[5rem]">
+                                      <span className="text-xs text-slate-600 tabular-nums">
+                                        {(v.prices[`rentabilidadIncIva${key}` as keyof PricesRow] ?? "") === "" ? "" : formatDecimal(v.prices[`rentabilidadIncIva${key}` as keyof PricesRow])}
+                                      </span>
+                                    </TableCell>
+                                  </TableRow>
+                                ))}
+                              </TableBody>
+                            </Table>
+                            <div className="px-1.5 py-1 border-t bg-white">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 text-xs text-slate-600"
+                                onClick={() => {
+                                  if (refreshRentabilidadOnCostBlur(i)) {
+                                    toast({ title: "Rentabilidad recalculada", description: "Se han actualizado los márgenes." });
+                                  }
+                                }}
+                              >
+                                Recalcular rentabilidad
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Campos opcionales */}
+                      <div className="rounded border border-dashed border-slate-200 bg-slate-50/30 p-2.5 space-y-2">
+                        <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Campos opcionales</p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
+                          <div>
+                            <Label className="text-xs text-slate-600">Color</Label>
+                            <CatalogSelectWithCreate
+                              companyId={companyId}
+                              catalogKey="colors"
+                              items={localColors}
+                              value={v.colorId}
+                              onChange={(val) => updateVariant(i, "colorId", val)}
+                              onItemCreated={(item) => setLocalColors((prev) => [...prev, item])}
+                              emptyLabel="—"
+                              valueKey="id"
+                              selectClassName="h-8 mt-0.5 w-full"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-xs text-slate-600">Talla</Label>
+                            <CatalogSelectWithCreate
+                              companyId={companyId}
+                              catalogKey="sizes"
+                              items={localSizes}
+                              value={v.sizeId}
+                              onChange={(val) => updateVariant(i, "sizeId", val)}
+                              onItemCreated={(item) => setLocalSizes((prev) => [...prev, item])}
+                              emptyLabel="—"
+                              valueKey="id"
+                              selectClassName="h-8 mt-0.5 w-full"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-xs text-slate-600">Sabor</Label>
+                            <CatalogSelectWithCreate
+                              companyId={companyId}
+                              catalogKey="flavors"
+                              items={localFlavors}
+                              value={v.flavorId}
+                              onChange={(val) => updateVariant(i, "flavorId", val)}
+                              onItemCreated={(item) => setLocalFlavors((prev) => [...prev, item])}
+                              emptyLabel="—"
+                              valueKey="id"
+                              selectClassName="h-8 mt-0.5 w-full"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-xs text-slate-600">Peso</Label>
                             <Input
                               type="number"
                               min={0}
-                              value={v.stockActual}
-                              onChange={(e) => updateVariant(i, "stockActual", e.target.value)}
-                              className="h-8 w-16"
-                              title="Stock actual"
+                              step={0.00001}
+                              value={v.weight}
+                              onChange={(e) => updateVariant(i, "weight", e.target.value)}
+                              placeholder="0"
+                              className="h-8 mt-0.5 w-full"
                             />
+                          </div>
+                          <div className="sm:col-span-2 lg:col-span-4">
+                            <Label className="text-xs text-slate-600">Observaciones (variante)</Label>
                             <Input
-                              type="number"
-                              min={0}
-                              value={v.stockMin}
-                              onChange={(e) => updateVariant(i, "stockMin", e.target.value)}
-                              className="h-8 w-16"
-                              title="Stock mín."
+                              value={v.observations}
+                              onChange={(e) => updateVariant(i, "observations", e.target.value)}
+                              placeholder="Notas opcionales para esta variante"
+                              className="h-8 mt-0.5 w-full"
                             />
                           </div>
-                        </TableCell>
-                        <TableCell>
-                          <Input
-                            value={v.observations}
-                            onChange={(e) => updateVariant(i, "observations", e.target.value)}
-                            placeholder="Notas variante"
-                            className="h-8 text-xs"
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex flex-wrap gap-1">
-                            {v.prices.map((p, pi) => (
-                              <div key={pi} className="flex items-center gap-1 bg-slate-100 rounded px-1 py-0.5">
-                                <select
-                                  value={p.priceType}
-                                  onChange={(e) => updateVariantPrice(i, pi, "priceType", e.target.value)}
-                                  className="h-7 text-xs border rounded bg-white"
-                                >
-                                  {PRICE_TYPES.map((pt) => (
-                                    <option key={pt.value} value={pt.value}>{pt.label}</option>
-                                  ))}
-                                </select>
-                                <Input
-                                  type="number"
-                                  min={0}
-                                  step={0.01}
-                                  value={p.price}
-                                  onChange={(e) => updateVariantPrice(i, pi, "price", e.target.value)}
-                                  placeholder="0.00"
-                                  className="h-7 w-20 text-xs"
-                                />
-                                <label className="text-xs flex items-center gap-0.5">
-                                  <input
-                                    type="checkbox"
-                                    checked={p.isDefault}
-                                    onChange={(e) => updateVariantPrice(i, pi, "isDefault", e.target.checked)}
-                                  />
-                                  Def
-                                </label>
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-6 w-6"
-                                  onClick={() => removePriceFromVariant(i, pi)}
-                                >
-                                  <Trash2 className="h-3 w-3" />
-                                </Button>
-                              </div>
-                            ))}
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              className="h-7 text-xs"
-                              onClick={() => addPriceToVariant(i)}
-                            >
-                              +
-                            </Button>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            disabled={variants.length <= 1}
-                            onClick={() => removeVariant(i)}
-                          >
-                            <Trash2 className="h-4 w-4 text-red-500" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
               </div>
             </TabsContent>
 
@@ -965,7 +1371,7 @@ function BatchForm({
           <Input
             type="number"
             min={0}
-            step={0.01}
+            step={0.00001}
             value={currentStock}
             onChange={(e) => setCurrentStock(e.target.value)}
             className="h-8 w-24"

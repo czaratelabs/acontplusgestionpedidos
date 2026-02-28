@@ -11,6 +11,7 @@ import { Establishment } from '../establishments/entities/establishment.entity';
 import { Warehouse } from '../warehouses/entities/warehouse.entity';
 import { EmissionPoint } from '../emission-points/entities/emission-point.entity';
 import { Contact } from '../contacts/entities/contact.entity';
+import { Article } from '../articles/entities/article.entity';
 import { ClsService } from '../common/cls/cls-context.service';
 
 @Injectable()
@@ -28,6 +29,8 @@ export class CompaniesService {
     private readonly emissionPointRepository: Repository<EmissionPoint>,
     @InjectRepository(Contact)
     private readonly contactRepository: Repository<Contact>,
+    @InjectRepository(Article)
+    private readonly articleRepository: Repository<Article>,
     private readonly cls: ClsService,
   ) {}
 
@@ -127,6 +130,7 @@ export class CompaniesService {
   /**
    * Returns true if the company's plan enables the given module.
    * If company has no plan, returns false.
+   * Si el módulo está inactivo en el plan, no se puede acceder (ej. Inventario requiere modules.logistics = true).
    */
   async isModuleEnabled(companyId: string, moduleKey: string): Promise<boolean> {
     const company = await this.companyRepository.findOne({
@@ -205,8 +209,7 @@ export class CompaniesService {
           .getCount();
         break;
       case 'max_inventory_items':
-        // Placeholder: no inventory entity yet - add count when available
-        count = 0;
+        count = await this.articleRepository.count({ where: { companyId } });
         break;
       case 'storage_gb':
         // Placeholder: storage usage tracked elsewhere - limit -1 = unlimited

@@ -7,6 +7,7 @@ import {
   JoinColumn,
   CreateDateColumn,
   UpdateDateColumn,
+  Unique,
 } from 'typeorm';
 import { Company } from '../../companies/entities/company.entity';
 import { Brand } from './brand.entity';
@@ -20,9 +21,14 @@ import { ArticleImage } from './article-image.entity';
  * Variants hold SKU, barcode, cost, stock, and attribute specifics.
  */
 @Entity('articles')
+@Unique('UQ_articles_company_code', ['companyId', 'code'])
 export class Article {
   @PrimaryGeneratedColumn('uuid')
   id: string;
+
+  /** Código maestro: identifica al modelo y agrupa variantes. Único por empresa. */
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  code: string | null;
 
   @Column({ type: 'varchar' })
   name: string;

@@ -29,7 +29,7 @@ import { useToast } from "@/components/ui/use-toast";
 
 const MODULE_LABELS: Record<string, string> = {
   audit: "Auditoría",
-  logistics: "Logística",
+  logistics: "Inventario",
   business_rules: "Reglas de negocio",
   sri: "SRI",
   directory_clients: "Directorio de clientes",

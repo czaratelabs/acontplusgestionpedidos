@@ -38,6 +38,10 @@ export class ArticleVariant {
   @JoinColumn({ name: 'article_id' })
   article: Article;
 
+  /** Código maestro del artículo padre (desnormalizado para búsquedas rápidas por código). */
+  @Column({ name: 'article_code', type: 'varchar', length: 100, nullable: true })
+  articleCode: string | null;
+
   @Column({ type: 'varchar' })
   sku: string;
 
@@ -83,6 +87,9 @@ export class ArticleVariant {
 
   @Column({ name: 'stock_min', type: 'decimal', precision: 18, scale: 4, default: 0 })
   stockMin: number;
+
+  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true, default: 0 })
+  weight: number;
 
   /** Denormalized for unique constraints and fast lookups */
   @Column({ name: 'company_id', type: 'uuid' })

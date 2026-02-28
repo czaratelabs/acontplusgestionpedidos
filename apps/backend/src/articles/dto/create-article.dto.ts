@@ -10,17 +10,67 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
+/** 5 tarifas fijas por variante. Rentabilidad se calcula en BD por trigger. */
 export class CreateArticleVariantPriceDto {
-  @IsString()
-  priceType: string;
-
+  @IsOptional()
   @IsNumber()
   @Min(0)
   @Type(() => Number)
-  price: number;
+  precioVenta1?: number;
 
   @IsOptional()
-  isDefault?: boolean;
+  @IsNumber()
+  @Min(0)
+  @Type(() => Number)
+  precioVenta2?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Type(() => Number)
+  precioVenta3?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Type(() => Number)
+  precioVenta4?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Type(() => Number)
+  precioVenta5?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Type(() => Number)
+  pvp1?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Type(() => Number)
+  pvp2?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Type(() => Number)
+  pvp3?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Type(() => Number)
+  pvp4?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Type(() => Number)
+  pvp5?: number;
 
   @IsOptional()
   @IsUUID()
@@ -75,17 +125,27 @@ export class CreateArticleVariantDto {
   stockMin?: number;
 
   @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Type(() => Number)
+  weight?: number;
+
+  @IsOptional()
   @IsString()
   observations?: string | null;
 
   @IsOptional()
-  @IsArray()
-  @ValidateNested({ each: true })
+  @ValidateNested()
   @Type(() => CreateArticleVariantPriceDto)
-  prices?: CreateArticleVariantPriceDto[];
+  prices?: CreateArticleVariantPriceDto;
 }
 
 export class CreateArticleDto {
+  /** Código maestro: único por empresa, agrupa todas las variantes. */
+  @IsNotEmpty()
+  @IsString()
+  code: string;
+
   @IsNotEmpty()
   @IsString()
   name: string;
@@ -106,9 +166,10 @@ export class CreateArticleDto {
   @IsString()
   observations?: string | null;
 
-  @IsNotEmpty()
+  /** Variantes (SKU, precios, etc.). Opcional: se puede guardar solo la cabecera del artículo. */
+  @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => CreateArticleVariantDto)
-  variants: CreateArticleVariantDto[];
+  variants?: CreateArticleVariantDto[];
 }

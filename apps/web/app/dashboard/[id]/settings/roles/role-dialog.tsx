@@ -139,7 +139,7 @@ export function RoleDialog({
           <DialogDescription>
             {isEditing
               ? "Modifica los datos del rol."
-              : "Crea un rol personalizado para esta empresa. Usa nombres descriptivos (ej: Logística, Contador)."}
+              : "Crea un rol personalizado para esta empresa. Usa nombres descriptivos (ej: Inventario, Contador)."}
           </DialogDescription>
         </DialogHeader>
 
@@ -148,7 +148,7 @@ export function RoleDialog({
             <Label htmlFor="role-name">Nombre del Rol</Label>
             <Input
               id="role-name"
-              placeholder="Ej: Logística, Contador, Vendedor"
+              placeholder="Ej: Inventario, Contador, Vendedor"
               {...register("name")}
             />
             {errors.name && (

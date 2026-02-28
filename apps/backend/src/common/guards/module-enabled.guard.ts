@@ -25,6 +25,13 @@ export class ModuleEnabledGuard implements CanActivate {
       return true;
     }
 
+    // Los planes controlan acceso a formularios y límites, no las acciones dentro del formulario.
+    // No bloquear edición (PATCH/PUT) ni eliminación (DELETE) por módulo.
+    const method = request.method?.toUpperCase();
+    if (method === 'PATCH' || method === 'PUT' || method === 'DELETE') {
+      return true;
+    }
+
     const moduleKey = this.reflector.getAllAndOverride<string>(
       MODULE_ENABLED_KEY,
       [context.getHandler(), context.getClass()],

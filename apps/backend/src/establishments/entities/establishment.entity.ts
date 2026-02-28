@@ -1,4 +1,4 @@
-import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, OneToMany, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, OneToMany, CreateDateColumn, UpdateDateColumn, JoinColumn } from 'typeorm';
 import { Company } from '../../companies/entities/company.entity';
 import { EmissionPoint } from '../../emission-points/entities/emission-point.entity';
 import { Warehouse } from '../../warehouses/entities/warehouse.entity';
@@ -30,6 +30,7 @@ export class Establishment {
   logo_url: string;
 
   @ManyToOne(() => Company, (company) => company.establishments)
+  @JoinColumn({ name: 'company_id' })
   company: Company;
 
   @CreateDateColumn()

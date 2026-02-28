@@ -6,12 +6,9 @@ import {
   Delete,
   Body,
   Param,
-  Query,
   UseGuards,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { ModuleEnabledGuard } from '../common/guards/module-enabled.guard';
-import { ModuleEnabled } from '../common/decorators/module-enabled.decorator';
 import { BrandsService } from './brands.service';
 import { CategoriesService } from './categories.service';
 import { MeasuresService } from './measures.service';
@@ -20,8 +17,7 @@ import { SizesService } from './sizes.service';
 import { FlavorsService } from './flavors.service';
 
 @Controller('articles/catalogs')
-@UseGuards(JwtAuthGuard, ModuleEnabledGuard)
-@ModuleEnabled('logistics')
+@UseGuards(JwtAuthGuard)
 export class CatalogsController {
   constructor(
     private readonly brandsService: BrandsService,

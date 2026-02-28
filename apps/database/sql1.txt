@@ -1,0 +1,66 @@
+-- =============================================================================
+-- 1. CAMPO DE CÓDIGO MAESTRO (ARTÍCULOS)
+-- =============================================================================
+
+-- Añadimos el código a la cabecera
+ALTER TABLE public.articles ADD COLUMN code VARCHAR(100);
+
+-- Lo hacemos único por empresa para evitar colisiones entre clientes
+CREATE UNIQUE INDEX UQ_articles_company_code ON public.articles (company_id, code);
+
+-- Añadimos la relación en las variantes para búsquedas directas sin JOIN (Desnormalización para velocidad)
+ALTER TABLE public.article_variants ADD COLUMN article_code VARCHAR(100);
+
+-- Creamos la llave foránea que vincula la variante con el código maestro
+ALTER TABLE public.article_variants 
+ADD CONSTRAINT FK_variants_article_code 
+FOREIGN KEY (company_id, article_code) REFERENCES public.articles(company_id, code) 
+ON DELETE CASCADE ON UPDATE CASCADE;
+
+
+-- =============================================================================
+-- 2. TRIGGER DE SINCRONIZACIÓN DE COSTO -> RENTABILIDAD
+-- =============================================================================
+
+-- Esta función se dispara cuando el costo cambia en la variante
+CREATE OR REPLACE FUNCTION public.fn_sync_cost_to_profitability()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Si el costo cambió, "tocamos" la tabla de precios para que su propio 
+    -- trigger (trg_update_profitability) recalcule las 5 rentabilidades.
+    IF (OLD.cost IS DISTINCT FROM NEW.cost) THEN
+        UPDATE article_variant_prices 
+        SET updated_at = now() 
+        WHERE article_variant_id = NEW.id;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_sync_cost_update
+AFTER UPDATE OF cost ON public.article_variants
+FOR EACH ROW EXECUTE FUNCTION public.fn_sync_cost_to_profitability();
+
+-- Actualizamos la lógica del buscador para darle máxima prioridad al nuevo CÓDIGO
+CREATE OR REPLACE FUNCTION public.article_variants_search_trigger() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    article_name TEXT;
+    article_master_code TEXT;
+    brand_name TEXT;
+BEGIN
+    SELECT a.name, a.code, b.name INTO article_name, article_master_code, brand_name
+    FROM articles a LEFT JOIN brands b ON a.brand_id = b.id
+    WHERE a.id = NEW.article_id;
+
+    NEW.search_vector := 
+        setweight(to_tsvector('spanish', coalesce(article_master_code, '')), 'A') || -- Máxima prioridad al Código Maestro
+        setweight(to_tsvector('spanish', coalesce(article_name, '')), 'A') ||
+        setweight(to_tsvector('spanish', coalesce(NEW.sku, '')), 'A') ||
+        setweight(to_tsvector('spanish', coalesce(NEW.barcode, '')), 'B') ||
+        setweight(to_tsvector('spanish', coalesce(brand_name, '')), 'C');
+    
+    RETURN NEW;
+END
+$$;
