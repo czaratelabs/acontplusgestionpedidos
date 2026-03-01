@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { jwtDecode } from "jwt-decode";
-import { Building2, Settings, SlidersHorizontal, FileText, Users, Truck, Briefcase, Shield, Scale, Percent, CreditCard, Tags } from "lucide-react";
+import { Building2, Settings, SlidersHorizontal, FileText, Users, Truck, Briefcase, Shield, Scale, Percent, CreditCard, Tags, Receipt } from "lucide-react";
 import Link from "next/link";
 import { UserNav } from "@/components/user-nav";
 import { LockedMenuItem } from "@/components/locked-menu-item";
@@ -160,6 +160,7 @@ export default async function DashboardLayout({
                   <MenuOrLocked moduleKey="admin_establishments" href={`/dashboard/${id}/settings/establishments`} label="Establecimientos" icon={<Building2 className="h-4 w-4" />} moduleName="El módulo de Establecimientos" />
                   <MenuOrLocked moduleKey="admin_company_config" href={`/dashboard/${id}/settings/company`} label="Configuración Empresa" icon={<Settings className="h-4 w-4" />} moduleName="El módulo de Configuración de Empresa" />
                   <MenuOrLocked moduleKey="admin_general_config" href={`/dashboard/${id}/settings/general`} label="Configuración General" icon={<SlidersHorizontal className="h-4 w-4" />} moduleName="El módulo de Configuración General" />
+                  <MenuOrLocked moduleKey="admin_general_config" href={`/dashboard/${id}/settings/tariffs`} label="Tarifas de venta" icon={<Receipt className="h-4 w-4" />} moduleName="El módulo de Tarifas de venta" />
                   <MenuOrLocked moduleKey="admin_taxes" href={`/dashboard/${id}/settings/taxes`} label="Impuestos" icon={<Percent className="h-4 w-4" />} moduleName="El módulo de Impuestos" />
                   <MenuLink href={`/dashboard/${id}/settings/catalogs`} icon={<Tags className="h-4 w-4" />}>Catálogos</MenuLink>
                   <MenuOrLocked moduleKey="admin_audit" href={`/dashboard/${id}/settings/audit`} label="Auditoría" icon={<FileText className="h-4 w-4" />} moduleName="El módulo de Auditoría" />

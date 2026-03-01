@@ -54,6 +54,7 @@ import { roundToFive } from "@/lib/math.util";
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
 const TARIFF_NAMES_KEY = "TARIFF_NAMES";
+const TARIFF_PROFITABILITY_KEY = "TARIFF_PROFITABILITY";
 const TARIFAS_KEYS = [1, 2, 3, 4, 5] as const;
 const DEFAULT_TARIFF_LABELS: Record<string, string> = {
   "1": "Tarifa 1",
@@ -268,10 +269,23 @@ export function ArticleFormDialog({
     Array<{ id: string; sku: string; batches: Batch[] }>
   >([]);
   const [tariffLabels, setTariffLabels] = useState<Record<string, string>>({ ...DEFAULT_TARIFF_LABELS });
+  const [profitabilityConfig, setProfitabilityConfig] = useState<{
+    defaultPercentages: Record<string, number>;
+    profiles: Array<{ name?: string; categoryIds: string[]; percentages: Record<string, number> }>;
+  } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
   const { toast } = useToast();
   const isEditing = Boolean(initialData);
+
+  const activeProfileName = profitabilityConfig
+    ? categoryId
+      ? (() => {
+          const p = profitabilityConfig.profiles.find((prof) => prof.categoryIds.includes(categoryId));
+          return p ? (p.name || "Sin nombre") : "Por defecto";
+        })()
+      : "Por defecto"
+    : "";
 
   useEffect(() => {
     if (!open || !companyId) return;
@@ -287,6 +301,39 @@ export function ArticleFormDialog({
             const parsed = JSON.parse(data.value) as Record<string, string>;
             if (parsed && typeof parsed === "object")
               setTariffLabels({ ...DEFAULT_TARIFF_LABELS, ...parsed });
+          } catch {
+            /* usar defaults */
+          }
+        }
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [open, companyId]);
+
+  useEffect(() => {
+    if (!open || !companyId) return;
+    const controller = new AbortController();
+    fetch(`${API_BASE}/system-settings/${TARIFF_PROFITABILITY_KEY}?companyId=${encodeURIComponent(companyId)}`, {
+      credentials: "include",
+      signal: controller.signal,
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { value?: string } | null) => {
+        if (data?.value) {
+          try {
+            const parsed = JSON.parse(data.value) as {
+              defaultPercentages?: Record<string, number>;
+              profiles?: Array<{ name?: string; categoryIds?: string[]; percentages?: Record<string, number> }>;
+            };
+            if (parsed) {
+              const defaultPct = (parsed.defaultPercentages ?? {}) as Record<string, number>;
+              const profiles = (parsed.profiles ?? []).map((p) => ({
+                name: typeof p.name === "string" ? p.name : "",
+                categoryIds: Array.isArray(p.categoryIds) ? p.categoryIds : [],
+                percentages: (p.percentages ?? {}) as Record<string, number>,
+              }));
+              setProfitabilityConfig({ defaultPercentages: defaultPct, profiles });
+            }
           } catch {
             /* usar defaults */
           }
@@ -381,6 +428,23 @@ export function ArticleFormDialog({
       }
     }
   }, [open, initialData]);
+
+  // Aplica porcentajes de rentabilidad del perfil o por defecto cuando cambia la categoría
+  useEffect(() => {
+    if (!profitabilityConfig || isEditing) return;
+    const profile = categoryId ? profitabilityConfig.profiles.find((p) => p.categoryIds.includes(categoryId)) : null;
+    const percentages = profile?.percentages ?? profitabilityConfig.defaultPercentages ?? {};
+    setVariants((prev) =>
+      prev.map((v) => {
+        const prices = { ...v.prices } as Record<string, string>;
+        for (const key of TARIFAS_KEYS) {
+          const pct = percentages[String(key)] ?? 0;
+          prices[`porcentajeRentabilidad${key}`] = String(pct);
+        }
+        return { ...v, prices: prices as PricesRow };
+      })
+    );
+  }, [categoryId, profitabilityConfig, isEditing]);
 
   function addVariant() {
     setVariants((prev) => [...prev, emptyVariant()]);
@@ -780,6 +844,60 @@ export function ArticleFormDialog({
       return next;
     });
     return true;
+  }
+
+  /** Asigna los porcentajes del perfil activo (o por defecto) a todas las variantes y recalcula precios. */
+  function applyProfilePercentages(): void {
+    if (!profitabilityConfig) return;
+    const profile = categoryId
+      ? profitabilityConfig.profiles.find((p) => p.categoryIds.includes(categoryId))
+      : null;
+    const percentages = profile?.percentages ?? profitabilityConfig.defaultPercentages ?? {};
+    const ivaPct = taxId ? (taxes.find((t) => t.id === taxId)?.percentage ?? 0) : 0;
+
+    setVariants((prev) =>
+      prev.map((v) => {
+        const cost = parseFloat(v.cost) || 0;
+        const costIncIva = ivaPct !== 0 ? cost * (1 + ivaPct / 100) : cost;
+        const prices = { ...v.prices } as Record<string, string>;
+
+        if (cost <= 0 || costIncIva <= 0) {
+          for (const key of TARIFAS_KEYS) {
+            prices[`porcentajeRentabilidad${key}`] = String(percentages[String(key)] ?? 0);
+            prices[`precioVenta${key}`] = "0";
+            prices[`pvp${key}`] = "0";
+            prices[`rentabilidad${key}`] = "0";
+            prices[`rentabilidadIncIva${key}`] = "0";
+          }
+          return { ...v, prices: prices as PricesRow };
+        }
+
+        for (const key of TARIFAS_KEYS) {
+          const pct = Number(percentages[String(key)]) || 0;
+          prices[`porcentajeRentabilidad${key}`] = String(pct);
+
+          if (pct <= 0) {
+            prices[`precioVenta${key}`] = "0";
+            prices[`pvp${key}`] = "0";
+            prices[`rentabilidad${key}`] = "0";
+            prices[`rentabilidadIncIva${key}`] = "0";
+            continue;
+          }
+
+          const precioVenta = roundToFive(cost + cost * (pct / 100), 5);
+          const pvp = ivaPct === 0 ? precioVenta : roundToFive(precioVenta * (1 + ivaPct / 100), 5);
+          const valorRent = roundToFive(precioVenta - cost, 5);
+          const valorRentIncIva = roundToFive(pvp - costIncIva, 5);
+
+          prices[`precioVenta${key}`] = formatDecimal(precioVenta);
+          prices[`pvp${key}`] = formatDecimal(pvp);
+          prices[`rentabilidad${key}`] = formatDecimal(valorRent);
+          prices[`rentabilidadIncIva${key}`] = formatDecimal(valorRentIncIva);
+        }
+        return { ...v, prices: prices as PricesRow };
+      })
+    );
+    toast({ title: "Porcentajes asignados", description: "Se han aplicado los porcentajes del perfil a todas las variantes." });
   }
 
   async function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>, isMain = false) {
@@ -1317,31 +1435,35 @@ export function ArticleFormDialog({
                                     </TableCell>
                                     <TableCell className="py-0.5 px-1 min-w-[5rem]">
                                       <span className="text-xs text-slate-600 tabular-nums">
-                                        {(v.prices[`rentabilidad${key}` as keyof PricesRow] ?? "") === "" ? "" : formatDecimal(v.prices[`rentabilidad${key}` as keyof PricesRow])}
+                                        {(v.prices[`rentabilidad${key}` as keyof PricesRow] ?? "") === ""
+                                          ? ""
+                                          : formatDecimal(v.prices[`rentabilidad${key}` as keyof PricesRow] ?? 0)}
                                       </span>
                                     </TableCell>
                                     <TableCell className="py-0.5 px-1 min-w-[5rem]">
                                       <span className="text-xs text-slate-600 tabular-nums">
-                                        {(v.prices[`rentabilidadIncIva${key}` as keyof PricesRow] ?? "") === "" ? "" : formatDecimal(v.prices[`rentabilidadIncIva${key}` as keyof PricesRow])}
+                                        {(v.prices[`rentabilidadIncIva${key}` as keyof PricesRow] ?? "") === ""
+                                          ? ""
+                                          : formatDecimal(v.prices[`rentabilidadIncIva${key}` as keyof PricesRow] ?? 0)}
                                       </span>
                                     </TableCell>
                                   </TableRow>
                                 ))}
                               </TableBody>
                             </Table>
-                            <div className="px-1.5 py-1 border-t bg-white">
+                            <div className="px-1.5 py-1 border-t bg-white flex items-center justify-between gap-2 flex-wrap">
+                              <Label className="text-xs text-slate-600 font-normal">
+                                Perfil de tarifas: {activeProfileName || "—"}
+                              </Label>
                               <Button
                                 type="button"
                                 variant="ghost"
                                 size="sm"
                                 className="h-6 text-xs text-slate-600"
-                                onClick={() => {
-                                  if (refreshRentabilidadOnCostBlur(i)) {
-                                    toast({ title: "Rentabilidad recalculada", description: "Se han actualizado los márgenes." });
-                                  }
-                                }}
+                                onClick={applyProfilePercentages}
+                                disabled={!profitabilityConfig}
                               >
-                                Recalcular rentabilidad
+                                Asignar porcentajes
                               </Button>
                             </div>
                           </div>

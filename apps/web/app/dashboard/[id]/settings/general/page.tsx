@@ -16,22 +16,12 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
 import { CURRENCY_OPTIONS } from "@/lib/currency";
-import { Input } from "@/components/ui/input";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
 const SYSTEM_TIMEZONE_KEY = "SYSTEM_TIMEZONE";
 const SYSTEM_CURRENCY_KEY = "SYSTEM_CURRENCY";
 const SYSTEM_DATE_FORMAT_KEY = "SYSTEM_DATE_FORMAT";
-const TARIFF_NAMES_KEY = "TARIFF_NAMES";
-
-const DEFAULT_TARIFF_NAMES: Record<string, string> = {
-  "1": "Tarifa 1",
-  "2": "Tarifa 2",
-  "3": "Tarifa 3",
-  "4": "Tarifa 4",
-  "5": "Tarifa 5",
-};
 
 const TIMEZONE_RAW: { value: string; key: string }[] = [
   { value: "America/Guayaquil", key: "Guayaquil" },
@@ -82,9 +72,6 @@ export default function GeneralSettingsPage({
   const [systemDateFormat, setSystemDateFormat] = useState<string>("DD/MM/YYYY");
   const [loadingDateFormat, setLoadingDateFormat] = useState(true);
   const [savingDateFormat, setSavingDateFormat] = useState(false);
-  const [tariffNames, setTariffNames] = useState<Record<string, string>>({ ...DEFAULT_TARIFF_NAMES });
-  const [loadingTariffNames, setLoadingTariffNames] = useState(true);
-  const [savingTariffNames, setSavingTariffNames] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
 
@@ -150,29 +137,6 @@ export default function GeneralSettingsPage({
       })
       .catch(() => {})
       .finally(() => setLoadingDateFormat(false));
-    return () => controller.abort();
-  }, [isAdminOrOwnerForEffect, companyIdStable]);
-
-  useEffect(() => {
-    if (!isAdminOrOwnerForEffect || !companyIdStable) return;
-    setLoadingTariffNames(true);
-    const url = `${API_BASE}/system-settings/${TARIFF_NAMES_KEY}?companyId=${encodeURIComponent(companyIdStable)}`;
-    const controller = new AbortController();
-    fetch(url, { credentials: "include", signal: controller.signal })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data: { value?: string } | null) => {
-        if (data?.value) {
-          try {
-            const parsed = JSON.parse(data.value) as Record<string, string>;
-            if (parsed && typeof parsed === "object")
-              setTariffNames({ ...DEFAULT_TARIFF_NAMES, ...parsed });
-          } catch {
-            /* usar defaults */
-          }
-        }
-      })
-      .catch(() => {})
-      .finally(() => setLoadingTariffNames(false));
     return () => controller.abort();
   }, [isAdminOrOwnerForEffect, companyIdStable]);
 
@@ -260,36 +224,6 @@ export default function GeneralSettingsPage({
       });
     } finally {
       setSavingDateFormat(false);
-    }
-  }
-
-  async function onSaveTariffNames() {
-    setSavingTariffNames(true);
-    try {
-      const payload = { ...DEFAULT_TARIFF_NAMES, ...tariffNames };
-      const value = JSON.stringify(payload);
-      const res = await fetch(`${API_BASE}/system-settings/${TARIFF_NAMES_KEY}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ companyId, value }),
-        credentials: "include",
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.message || "Error al guardar");
-      router.refresh();
-      toast({
-        title: "Éxito",
-        description: "Nombres de tarifas guardados. Se verán en el formulario de variantes.",
-        variant: "default",
-      });
-    } catch {
-      toast({
-        title: "Error",
-        description: "Error al guardar los nombres de tarifas.",
-        variant: "destructive",
-      });
-    } finally {
-      setSavingTariffNames(false);
     }
   }
 
@@ -435,41 +369,6 @@ export default function GeneralSettingsPage({
                   {savingDateFormat ? "Guardando..." : "Guardar formato"}
                 </Button>
               </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Nombres de tarifas de venta</CardTitle>
-              <CardDescription>
-                Etiquetas de las 5 tarifas que se muestran en el formulario de variantes (precios PVP).
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 max-w-3xl">
-                {[1, 2, 3, 4, 5].map((key) => (
-                  <div key={key} className="grid gap-1.5">
-                    <Label htmlFor={`tariff-${key}`} className="text-xs">Tarifa {key}</Label>
-                    <Input
-                      id={`tariff-${key}`}
-                      value={tariffNames[String(key)] ?? ""}
-                      onChange={(e) =>
-                        setTariffNames((prev) => ({ ...prev, [String(key)]: e.target.value }))
-                      }
-                      placeholder={DEFAULT_TARIFF_NAMES[String(key)]}
-                      disabled={loadingTariffNames}
-                      className="h-8"
-                    />
-                  </div>
-                ))}
-              </div>
-              <Button
-                onClick={onSaveTariffNames}
-                disabled={loadingTariffNames || savingTariffNames}
-                className="mt-4"
-              >
-                {savingTariffNames ? "Guardando..." : "Guardar nombres de tarifas"}
-              </Button>
             </CardContent>
           </Card>
         </>
