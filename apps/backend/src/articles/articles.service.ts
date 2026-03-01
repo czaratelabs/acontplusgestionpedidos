@@ -117,7 +117,7 @@ export class ArticlesService {
   async findAll(companyId: string): Promise<Article[]> {
     const articles = await this.articleRepo.find({
       where: { companyId },
-      relations: ['brand', 'category', 'tax', 'variants', 'variants.color', 'variants.size', 'variants.flavor', 'variants.prices', 'variants.prices.unit', 'variants.measureUnit', 'variants.batches', 'images'],
+      relations: ['brand', 'category', 'tax', 'variants', 'variants.color', 'variants.size', 'variants.flavor', 'variants.prices', 'variants.measureUnit', 'variants.batches', 'images'],
       order: { name: 'ASC' },
     });
     return articles.map((a) => this.enrichArticle(a));
@@ -126,7 +126,7 @@ export class ArticlesService {
   async findOne(id: string): Promise<Article> {
     const a = await this.articleRepo.findOne({
       where: { id },
-      relations: ['brand', 'category', 'tax', 'variants', 'variants.color', 'variants.size', 'variants.flavor', 'variants.prices', 'variants.prices.unit', 'variants.measureUnit', 'variants.batches', 'images'],
+      relations: ['brand', 'category', 'tax', 'variants', 'variants.color', 'variants.size', 'variants.flavor', 'variants.prices', 'variants.measureUnit', 'variants.batches', 'images'],
     });
     if (!a) throw new NotFoundException('Artículo no encontrado');
     return this.enrichArticle(a);
@@ -193,7 +193,6 @@ export class ArticlesService {
         colorId: vdto.colorId || null,
         sizeId: vdto.sizeId || null,
         flavorId: vdto.flavorId || null,
-        measure: vdto.measure?.trim() || null,
         measureId: vdto.measureId || null,
         stockActual: vdto.stockActual ?? 0,
         stockMin: vdto.stockMin ?? 0,
@@ -215,7 +214,6 @@ export class ArticlesService {
         pvp3: pdto?.pvp3 ?? 0,
         pvp4: pdto?.pvp4 ?? 0,
         pvp5: pdto?.pvp5 ?? 0,
-        unitId: pdto?.unitId || null,
       });
       await this.priceRepo.save(price);
     }
@@ -263,7 +261,6 @@ export class ArticlesService {
           existingV.colorId = vdto.colorId ?? existingV.colorId;
           existingV.sizeId = vdto.sizeId ?? existingV.sizeId;
           existingV.flavorId = vdto.flavorId ?? existingV.flavorId;
-          existingV.measure = vdto.measure?.trim() ?? existingV.measure;
           existingV.measureId = vdto.measureId ?? existingV.measureId;
           existingV.stockActual = vdto.stockActual ?? existingV.stockActual;
           existingV.stockMin = vdto.stockMin ?? existingV.stockMin;
@@ -283,7 +280,6 @@ export class ArticlesService {
             existingPrice.pvp3 = pdto?.pvp3 ?? existingPrice.pvp3;
             existingPrice.pvp4 = pdto?.pvp4 ?? existingPrice.pvp4;
             existingPrice.pvp5 = pdto?.pvp5 ?? existingPrice.pvp5;
-            existingPrice.unitId = pdto?.unitId ?? existingPrice.unitId;
             await this.priceRepo.save(existingPrice);
           } else {
             const newPrice = this.priceRepo.create({
@@ -298,7 +294,6 @@ export class ArticlesService {
               pvp3: pdto?.pvp3 ?? 0,
               pvp4: pdto?.pvp4 ?? 0,
               pvp5: pdto?.pvp5 ?? 0,
-              unitId: pdto?.unitId || null,
             });
             await this.priceRepo.save(newPrice);
           }
@@ -313,7 +308,6 @@ export class ArticlesService {
             colorId: vdto.colorId || null,
             sizeId: vdto.sizeId || null,
             flavorId: vdto.flavorId || null,
-            measure: vdto.measure?.trim() || null,
             measureId: vdto.measureId || null,
             stockActual: vdto.stockActual ?? 0,
             stockMin: vdto.stockMin ?? 0,
@@ -334,7 +328,6 @@ export class ArticlesService {
             pvp3: pdto?.pvp3 ?? 0,
             pvp4: pdto?.pvp4 ?? 0,
             pvp5: pdto?.pvp5 ?? 0,
-            unitId: pdto?.unitId || null,
           });
           await this.priceRepo.save(newPrice);
         }
@@ -372,7 +365,6 @@ export class ArticlesService {
     await this.priceRepo.save(price);
     return this.priceRepo.findOneOrFail({
       where: { id: price.id },
-      relations: ['unit'],
     });
   }
 

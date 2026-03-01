@@ -142,7 +142,7 @@ type VariantRow = {
   colorId: string;
   sizeId: string;
   flavorId: string;
-  measure: string;
+  measureId: string;
   weight: string;
   observations: string;
   prices: PricesRow;
@@ -155,7 +155,7 @@ const emptyVariant = (): VariantRow => ({
   colorId: "",
   sizeId: "",
   flavorId: "",
-  measure: "",
+  measureId: "",
   weight: "0",
   observations: "",
   prices: emptyPrices(),
@@ -167,6 +167,39 @@ function getBatchRowClass(expirationDate: string | null): string {
   if (days < 0) return "bg-red-100 dark:bg-red-900/20";
   if (days <= 30) return "bg-amber-100 dark:bg-amber-900/20";
   return "";
+}
+
+/**
+ * Recalcula porcentajes de utilidad y valores de rentabilidad para la tabla Tarifas PVP
+ * cuando el precio de venta es distinto de cero. Se usa al abrir el artículo para editar.
+ */
+function recalculateRentabilidadFromPrices(
+  cost: number,
+  ivaPct: number,
+  prices: PricesRow
+): PricesRow {
+  const costNum = roundToFive(cost, 5);
+  const costIncIva = ivaPct !== 0 ? roundToFive(costNum * (1 + ivaPct / 100), 5) : costNum;
+  const result = { ...prices } as Record<string, string>;
+  for (const key of TARIFAS_KEYS) {
+    const precioVentaNum = parseFloat(String(prices[`precioVenta${key}` as keyof PricesRow] ?? "")) || 0;
+    if (precioVentaNum > 0 && costNum > 0) {
+      const pv = roundToFive(precioVentaNum, 5);
+      const pctRent = roundToFive(((pv - costNum) / costNum) * 100, 5);
+      const valorRent = roundToFive(pv - costNum, 5);
+      const pvpNum = parseFloat(String(prices[`pvp${key}` as keyof PricesRow] ?? "")) || 0;
+      const pvp = roundToFive(pvpNum > 0 ? pvpNum : pv * (1 + ivaPct / 100), 5);
+      const valorRentIncIva = roundToFive(pvp - costIncIva, 5);
+      result[`porcentajeRentabilidad${key}`] = formatDecimal(pctRent);
+      result[`rentabilidad${key}`] = formatDecimal(valorRent);
+      result[`rentabilidadIncIva${key}`] = formatDecimal(valorRentIncIva);
+    } else {
+      result[`porcentajeRentabilidad${key}`] = "0";
+      result[`rentabilidad${key}`] = "0";
+      result[`rentabilidadIncIva${key}`] = "0";
+    }
+  }
+  return result as PricesRow;
 }
 
 type CatalogItem = { id: string; name: string };
@@ -202,7 +235,8 @@ type ArticleFormDialogProps = {
       color?: { id: string; name: string } | null;
       size?: { id: string; name: string } | null;
       flavor?: { id: string; name: string } | null;
-      measure?: string | null;
+      measureId?: string | null;
+      measureUnit?: { id: string; name: string } | null;
       stockActual: number;
       stockMin: number;
       weight?: number;
@@ -371,48 +405,52 @@ export function ArticleFormDialog({
         );
         setVariants(
           initialData.variants?.length
-            ? initialData.variants.map((v) => ({
-                id: v.id,
-                sku: v.sku,
-                barcode: v.barcode ?? "",
-                cost: formatDecimal(v.cost ?? 0),
-                colorId: v.colorId ?? v.color?.id ?? "",
-                sizeId: v.sizeId ?? v.size?.id ?? "",
-                flavorId: v.flavorId ?? v.flavor?.id ?? "",
-                measure: v.measure ?? "",
-                weight: String(v.weight ?? 0),
-                observations: v.observations ?? "",
-                prices: (() => {
-                  const p = v.prices?.[0];
-                  return {
-                    precioVenta1: formatDecimal(p?.precioVenta1 ?? 0),
-                    precioVenta2: formatDecimal(p?.precioVenta2 ?? 0),
-                    precioVenta3: formatDecimal(p?.precioVenta3 ?? 0),
-                    precioVenta4: formatDecimal(p?.precioVenta4 ?? 0),
-                    precioVenta5: formatDecimal(p?.precioVenta5 ?? 0),
-                    pvp1: formatDecimal(p?.pvp1 ?? 0),
-                    pvp2: formatDecimal(p?.pvp2 ?? 0),
-                    pvp3: formatDecimal(p?.pvp3 ?? 0),
-                    pvp4: formatDecimal(p?.pvp4 ?? 0),
-                    pvp5: formatDecimal(p?.pvp5 ?? 0),
-                    porcentajeRentabilidad1: p?.porcentajeRentabilidad1 != null ? formatDecimal(p.porcentajeRentabilidad1) : "0",
-                    porcentajeRentabilidad2: p?.porcentajeRentabilidad2 != null ? formatDecimal(p.porcentajeRentabilidad2) : "0",
-                    porcentajeRentabilidad3: p?.porcentajeRentabilidad3 != null ? formatDecimal(p.porcentajeRentabilidad3) : "0",
-                    porcentajeRentabilidad4: p?.porcentajeRentabilidad4 != null ? formatDecimal(p.porcentajeRentabilidad4) : "0",
-                    porcentajeRentabilidad5: p?.porcentajeRentabilidad5 != null ? formatDecimal(p.porcentajeRentabilidad5) : "0",
-                    rentabilidad1: p?.rentabilidad1 != null ? formatDecimal(p.rentabilidad1) : "0",
-                    rentabilidad2: p?.rentabilidad2 != null ? formatDecimal(p.rentabilidad2) : "0",
-                    rentabilidad3: p?.rentabilidad3 != null ? formatDecimal(p.rentabilidad3) : "0",
-                    rentabilidad4: p?.rentabilidad4 != null ? formatDecimal(p.rentabilidad4) : "0",
-                    rentabilidad5: p?.rentabilidad5 != null ? formatDecimal(p.rentabilidad5) : "0",
-                    rentabilidadIncIva1: p?.rentabilidadIncIva1 != null ? formatDecimal(p.rentabilidadIncIva1) : "0",
-                    rentabilidadIncIva2: p?.rentabilidadIncIva2 != null ? formatDecimal(p.rentabilidadIncIva2) : "0",
-                    rentabilidadIncIva3: p?.rentabilidadIncIva3 != null ? formatDecimal(p.rentabilidadIncIva3) : "0",
-                    rentabilidadIncIva4: p?.rentabilidadIncIva4 != null ? formatDecimal(p.rentabilidadIncIva4) : "0",
-                    rentabilidadIncIva5: p?.rentabilidadIncIva5 != null ? formatDecimal(p.rentabilidadIncIva5) : "0",
-                  };
-                })(),
-              }))
+            ? initialData.variants.map((v) => {
+                const p = v.prices?.[0];
+                const costNum = Number(v.cost ?? 0);
+                const ivaPct = initialData.taxId ? (taxes.find((t) => t.id === initialData.taxId)?.percentage ?? 0) : 0;
+                const pricesBase: PricesRow = {
+                  precioVenta1: formatDecimal(p?.precioVenta1 ?? 0),
+                  precioVenta2: formatDecimal(p?.precioVenta2 ?? 0),
+                  precioVenta3: formatDecimal(p?.precioVenta3 ?? 0),
+                  precioVenta4: formatDecimal(p?.precioVenta4 ?? 0),
+                  precioVenta5: formatDecimal(p?.precioVenta5 ?? 0),
+                  pvp1: formatDecimal(p?.pvp1 ?? 0),
+                  pvp2: formatDecimal(p?.pvp2 ?? 0),
+                  pvp3: formatDecimal(p?.pvp3 ?? 0),
+                  pvp4: formatDecimal(p?.pvp4 ?? 0),
+                  pvp5: formatDecimal(p?.pvp5 ?? 0),
+                  porcentajeRentabilidad1: "0",
+                  porcentajeRentabilidad2: "0",
+                  porcentajeRentabilidad3: "0",
+                  porcentajeRentabilidad4: "0",
+                  porcentajeRentabilidad5: "0",
+                  rentabilidad1: p?.rentabilidad1 != null ? formatDecimal(p.rentabilidad1) : "0",
+                  rentabilidad2: p?.rentabilidad2 != null ? formatDecimal(p.rentabilidad2) : "0",
+                  rentabilidad3: p?.rentabilidad3 != null ? formatDecimal(p.rentabilidad3) : "0",
+                  rentabilidad4: p?.rentabilidad4 != null ? formatDecimal(p.rentabilidad4) : "0",
+                  rentabilidad5: p?.rentabilidad5 != null ? formatDecimal(p.rentabilidad5) : "0",
+                  rentabilidadIncIva1: "0",
+                  rentabilidadIncIva2: "0",
+                  rentabilidadIncIva3: "0",
+                  rentabilidadIncIva4: "0",
+                  rentabilidadIncIva5: "0",
+                };
+                const prices = recalculateRentabilidadFromPrices(costNum, ivaPct, pricesBase);
+                return {
+                  id: v.id,
+                  sku: v.sku,
+                  barcode: v.barcode ?? "",
+                  cost: formatDecimal(v.cost ?? 0),
+                  colorId: v.colorId ?? v.color?.id ?? "",
+                  sizeId: v.sizeId ?? v.size?.id ?? "",
+                  flavorId: v.flavorId ?? v.flavor?.id ?? "",
+                  measureId: v.measureId ?? v.measureUnit?.id ?? "",
+                  weight: String(v.weight ?? 0),
+                  observations: v.observations ?? "",
+                  prices,
+                };
+              })
             : [emptyVariant()]
         );
       } else {
@@ -1058,7 +1096,7 @@ export function ArticleFormDialog({
           colorId: v.colorId?.trim() || null,
           sizeId: v.sizeId?.trim() || null,
           flavorId: v.flavorId?.trim() || null,
-          measure: v.measure.trim() || null,
+          measureId: v.measureId?.trim() || null,
           stockActual: 0,
           stockMin: 0,
           weight: parseFloat(v.weight) || 0,
@@ -1090,12 +1128,10 @@ export function ArticleFormDialog({
         credentials: "include",
       });
 
-      const errData = await res.json().catch(() => ({}));
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(errData.message ?? "Error al guardar");
+        throw new Error(data.message ?? "Error al guardar");
       }
-
-      const data = await res.json();
       setOpen(false);
       router.refresh();
       toast({
@@ -1342,11 +1378,11 @@ export function ArticleFormDialog({
                               companyId={companyId}
                               catalogKey="measures"
                               items={localMeasures}
-                              value={v.measure}
-                              onChange={(val) => updateVariant(i, "measure", val)}
+                              value={v.measureId}
+                              onChange={(val) => updateVariant(i, "measureId", val)}
                               onItemCreated={(item) => setLocalMeasures((prev) => [...prev, item])}
                               emptyLabel="— Seleccionar —"
-                              valueKey="name"
+                              valueKey="id"
                               selectClassName="h-8 mt-0.5 w-full"
                             />
                           </div>

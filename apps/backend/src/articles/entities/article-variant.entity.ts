@@ -72,9 +72,6 @@ export class ArticleVariant {
   @JoinColumn({ name: 'flavor_id' })
   flavor: Flavor | null;
 
-  @Column({ type: 'varchar', nullable: true })
-  measure: string | null;
-
   @Column({ name: 'measure_id', type: 'uuid', nullable: true })
   measureId: string | null;
 

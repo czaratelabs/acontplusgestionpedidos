@@ -71,10 +71,6 @@ export class CreateArticleVariantPriceDto {
   @Min(0)
   @Type(() => Number)
   pvp5?: number;
-
-  @IsOptional()
-  @IsUUID()
-  unitId?: string | null;
 }
 
 export class CreateArticleVariantDto {
@@ -103,10 +99,6 @@ export class CreateArticleVariantDto {
   @IsOptional()
   @IsUUID()
   flavorId?: string | null;
-
-  @IsOptional()
-  @IsString()
-  measure?: string | null;
 
   @IsOptional()
   @IsUUID()

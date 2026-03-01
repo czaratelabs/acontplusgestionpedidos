@@ -7,7 +7,6 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { ArticleVariant } from './article-variant.entity';
-import { Measure } from './measure.entity';
 
 /**
  * Precios por variante: 5 tarifas fijas (precio_venta, pvp, rentabilidad).
@@ -72,13 +71,6 @@ export class ArticleVariantPrice {
 
   @Column({ name: 'rentabilidad5', type: 'decimal', precision: 18, scale: 2, default: 0, insert: false, update: false })
   rentabilidad5: number;
-
-  @Column({ name: 'unit_id', type: 'uuid', nullable: true })
-  unitId: string | null;
-
-  @ManyToOne(() => Measure, { nullable: true, onDelete: 'SET NULL' })
-  @JoinColumn({ name: 'unit_id' })
-  unit: Measure | null;
 
   @UpdateDateColumn({ name: 'updated_at' })
   updated_at: Date;
