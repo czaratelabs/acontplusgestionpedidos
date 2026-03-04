@@ -55,6 +55,20 @@ export class ArticlesController {
     return this.articlesService.searchVariants(companyId, q ?? '');
   }
 
+  @Get('company/:companyId/check-barcode')
+  async checkBarcode(
+    @Param('companyId') companyId: string,
+    @Query('barcode') barcode: string,
+    @Query('excludeVariantId') excludeVariantId?: string,
+  ) {
+    const available = await this.articlesService.isBarcodeAvailable(
+      companyId,
+      barcode ?? '',
+      excludeVariantId,
+    );
+    return { available };
+  }
+
   @Get('company/:companyId')
   findAll(@Param('companyId') companyId: string) {
     return this.articlesService.findAll(companyId);

@@ -11,6 +11,7 @@ import { ArticleVariant } from './entities/article-variant.entity';
 import { ArticleVariantPrice } from './entities/article-variant-price.entity';
 import { ArticleImage } from './entities/article-image.entity';
 import { ArticleVariantBatch } from './entities/article-variant-batch.entity';
+import { ArticleVariantBarcode } from './entities/article-variant-barcode.entity';
 import { Brand } from './entities/brand.entity';
 import { Category } from './entities/category.entity';
 import { Measure } from './entities/measure.entity';
@@ -31,6 +32,7 @@ import { CatalogsController } from './catalogs.controller';
       ArticleVariantPrice,
       ArticleImage,
       ArticleVariantBatch,
+      ArticleVariantBarcode,
       Brand,
       Category,
       Measure,

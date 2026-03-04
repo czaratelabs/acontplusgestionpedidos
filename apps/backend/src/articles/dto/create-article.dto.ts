@@ -73,6 +73,17 @@ export class CreateArticleVariantPriceDto {
   pvp5?: number;
 }
 
+/** Additional barcode with optional description (Master Barcode stays on variant.barcode). */
+export class CreateArticleVariantBarcodeDto {
+  @IsNotEmpty()
+  @IsString()
+  barcode: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string | null;
+}
+
 export class CreateArticleVariantDto {
   @IsNotEmpty()
   @IsString()
@@ -130,6 +141,12 @@ export class CreateArticleVariantDto {
   @ValidateNested()
   @Type(() => CreateArticleVariantPriceDto)
   prices?: CreateArticleVariantPriceDto;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateArticleVariantBarcodeDto)
+  barcodes?: CreateArticleVariantBarcodeDto[];
 }
 
 export class CreateArticleDto {

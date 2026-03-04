@@ -13,6 +13,7 @@ import {
 import { Article } from './article.entity';
 import { ArticleVariantPrice } from './article-variant-price.entity';
 import { ArticleVariantBatch } from './article-variant-batch.entity';
+import { ArticleVariantBarcode } from './article-variant-barcode.entity';
 import { Measure } from './measure.entity';
 import { Color } from './color.entity';
 import { Size } from './size.entity';
@@ -109,4 +110,7 @@ export class ArticleVariant {
 
   @OneToMany(() => ArticleVariantBatch, (b) => b.articleVariant, { cascade: true })
   batches: ArticleVariantBatch[];
+
+  @OneToMany(() => ArticleVariantBarcode, (b) => b.articleVariant, { cascade: true })
+  barcodes: ArticleVariantBarcode[];
 }
