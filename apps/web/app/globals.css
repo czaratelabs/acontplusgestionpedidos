@@ -11,6 +11,16 @@ body {
 
 @layer base {
   :root {
+    /* Acontplus brand – Manual del logo (gama cromática) */
+    --acont-primary: #D61672;
+    --acont-secondary: #FFA901;
+    --acont-accent1: #FFC303;
+    --acont-accent2: #FFDF01;
+    --acont-bg: #f1f5f9;
+    --acont-surface: #ffffff;
+    /* Tipografía: Bahnschrift Bold (principal), Bahnschrift Light (secundaria) */
+    --font-acont: "Bahnschrift", "Segoe UI", "Franklin Gothic Medium", "Arial Narrow", sans-serif;
+
     --background: 0 0% 100%;
     --foreground: 0 0% 3.9%;
     --card: 0 0% 100%;
@@ -73,5 +83,6 @@ body {
   }
   body {
     @apply bg-background text-foreground;
+    font-family: var(--font-acont), ui-sans-serif, system-ui, sans-serif;
   }
 }

@@ -7,12 +7,23 @@ module.exports = {
   ],
   theme: {
   	extend: {
+  		fontFamily: {
+  			acont: ['var(--font-acont)', 'Segoe UI', 'sans-serif'],
+  		},
   		borderRadius: {
   			lg: 'var(--radius)',
   			md: 'calc(var(--radius) - 2px)',
   			sm: 'calc(var(--radius) - 4px)'
   		},
   		colors: {
+  			acont: {
+  				primary: 'var(--acont-primary)',
+  				secondary: 'var(--acont-secondary)',
+  				accent1: 'var(--acont-accent1)',
+  				accent2: 'var(--acont-accent2)',
+  				bg: 'var(--acont-bg)',
+  				surface: 'var(--acont-surface)',
+  			},
   			background: 'hsl(var(--background))',
   			foreground: 'hsl(var(--foreground))',
   			card: {

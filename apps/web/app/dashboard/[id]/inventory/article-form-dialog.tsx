@@ -1758,30 +1758,21 @@ export function ArticleFormDialog({
     <Dialog open={open} onOpenChange={handleDialogOpenChange}>
       {!isControlled && (
         <DialogTrigger asChild>
-          {trigger ?? <Button className="bg-slate-900 hover:bg-slate-800">+ Nuevo Artículo</Button>}
+          {trigger ?? <Button className="bg-acont-secondary text-slate-900 hover:bg-acont-secondary/90 border-0">+ Nuevo Artículo</Button>}
         </DialogTrigger>
       )}
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader className="space-y-1.5">
-          <DialogTitle>{isEditing ? "Editar Artículo" : "Nuevo Artículo"}</DialogTitle>
-          <div className="flex flex-col gap-3 pt-0.5 sm:flex-row sm:items-center sm:gap-4">
-            <DialogDescription className="flex-1 min-w-0 sm:pr-4">
-              Puedes guardar solo los datos generales (código, nombre, marca, etc.) y añadir variantes después.
-            </DialogDescription>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={handleNuevoClick}
-              className="shrink-0 self-end sm:self-center"
-            >
-              <Plus className="h-4 w-4 mr-1" />
-              Nuevo
-            </Button>
-          </div>
-        </DialogHeader>
-        <Tabs value={activeTab} onValueChange={handleTabChange}>
-          <TabsList className="grid w-full grid-cols-4">
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col bg-white text-slate-800 font-acont p-0 w-[95vw] sm:w-full rounded-lg shadow-[0_4px_15px_rgba(0,0,0,0.1)] border border-slate-200">
+        {/* Toolbar superior: solo título y descripción (el botón Nuevo está en el footer para no solaparse con cerrar) */}
+        <div className="flex flex-col gap-1 px-4 py-3 sm:px-6 sm:py-4 pr-12 sm:pr-14 border-b border-slate-200 bg-white shrink-0">
+          <h2 className="text-lg sm:text-xl font-semibold text-slate-800 m-0">
+            {isEditing ? "Editar Artículo" : "Gestión de Artículos"}
+          </h2>
+          <p className="text-slate-500 text-sm mt-0.5">
+            Guarda los datos generales y añade variantes después.
+          </p>
+        </div>
+        <Tabs value={activeTab} onValueChange={handleTabChange} className="flex flex-col min-h-0 flex-1 overflow-hidden">
+          <TabsList className="w-full grid grid-cols-4 rounded-none border-b-0 px-0 overflow-x-auto touch-pan-x shrink-0">
             <TabsTrigger value="general">General</TabsTrigger>
             <TabsTrigger
               value="variants"
@@ -1803,18 +1794,19 @@ export function ArticleFormDialog({
               if (effectiveArticleId && generalTabEditMode) saveGeneralArticleData();
               else if (!effectiveArticleId) saveGeneralArticleData();
             }}
-            className="space-y-4"
+            className="flex flex-col min-h-0 flex-1 overflow-hidden"
           >
-            <TabsContent value="general" className="space-y-3 mt-3">
+            <TabsContent value="general" className="flex-1 overflow-y-auto min-h-0 mt-0 data-[state=inactive]:hidden">
               <div
-                className={`rounded-lg border-2 transition-colors ${
-                  generalTabEditMode ? "border-amber-200 bg-amber-50/30" : "border-transparent"
+                className={`rounded-none transition-colors ${
+                  generalTabEditMode ? "ring-2 ring-amber-300 bg-amber-50/20" : ""
                 } ${generalFieldsDisabled ? "opacity-90" : ""}`}
               >
-              <fieldset disabled={generalFieldsDisabled} className="disabled:opacity-70 disabled:pointer-events-none [&_*]:disabled:pointer-events-none min-w-0">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 sm:gap-3 p-1">
-                <div>
-                  <Label className="text-xs">Categoría <span className="text-red-500">*</span></Label>
+              <fieldset disabled={generalFieldsDisabled} className="disabled:opacity-70 disabled:pointer-events-none [&_*]:disabled:pointer-events-none min-w-0 p-4 sm:p-6 md:p-8">
+              {/* Grid estilo prueba.html: 2 columnas desktop, 1 móvil; gap 20px */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
+                <div className="flex flex-col">
+                  <Label className="text-[0.85rem] font-semibold mb-1.5 text-slate-600">Categoría <span className="text-red-500">*</span></Label>
                   <CatalogSelectWithCreate
                     companyId={companyId}
                     catalogKey="categories"
@@ -1825,11 +1817,11 @@ export function ArticleFormDialog({
                     placeholder="Seleccionar categoría"
                     emptyLabel="— Sin categoría —"
                     valueKey="id"
-                    selectClassName="h-8 mt-0.5 w-full"
+                    selectClassName="h-10 px-3 py-2.5 w-full rounded border border-slate-200 bg-[#fafafa] focus:border-acont-primary focus:ring-2 focus:ring-acont-primary/20 text-sm"
                   />
                 </div>
-                <div>
-                  <Label className="text-xs">Marca</Label>
+                <div className="flex flex-col">
+                  <Label className="text-[0.85rem] font-semibold mb-1.5 text-slate-600">Marca</Label>
                   <CatalogSelectWithCreate
                     companyId={companyId}
                     catalogKey="brands"
@@ -1840,16 +1832,13 @@ export function ArticleFormDialog({
                     placeholder="Seleccionar marca"
                     emptyLabel="— Sin marca —"
                     valueKey="id"
-                    selectClassName="h-8 mt-0.5 w-full"
+                    selectClassName="h-10 px-3 py-2.5 w-full rounded border border-slate-200 bg-[#fafafa] focus:border-acont-primary focus:ring-2 focus:ring-acont-primary/20 text-sm"
                   />
                 </div>
-                <div>
-                  <Label htmlFor="code" className="text-xs flex items-center gap-1">
-                    Código de artículo (Maestro) <span className="text-red-500">*</span>
-                    <span
-                      className="inline-flex text-slate-400 cursor-help"
-                      title="Este código identifica al modelo del producto y agrupa todas sus variantes."
-                    >
+                <div className="flex flex-col">
+                  <Label htmlFor="code" className="text-[0.85rem] font-semibold mb-1.5 text-slate-600 flex items-center gap-1">
+                    Código Maestro <span className="text-red-500">*</span>
+                    <span className="inline-flex text-slate-400 cursor-help" title="Código que agrupa todas las variantes.">
                       <Info className="h-3 w-3" />
                     </span>
                   </Label>
@@ -1858,41 +1847,37 @@ export function ArticleFormDialog({
                     value={code}
                     onChange={(e) => setCode(e.target.value)}
                     placeholder="Ej: CAM-001"
-                    className="h-8 mt-0.5 w-full"
+                    className="h-10 px-3 py-2.5 w-full rounded border border-slate-200 bg-[#fafafa] focus:border-acont-primary focus:ring-2 focus:ring-acont-primary/20 text-sm"
                   />
                 </div>
-                <div>
-                  <Label htmlFor="name" className="text-xs">Nombre base <span className="text-red-500">*</span></Label>
+                <div className="flex flex-col">
+                  <Label htmlFor="name" className="text-[0.85rem] font-semibold mb-1.5 text-slate-600">Nombre Base <span className="text-red-500">*</span></Label>
                   <Input
                     id="name"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    placeholder="Ej: Camiseta Básica"
-                    className="h-8 mt-0.5 w-full"
+                    placeholder="Ej: ZAPATO BRASILERO"
+                    className="h-10 px-3 py-2.5 w-full rounded border border-slate-200 bg-[#fafafa] focus:border-acont-primary focus:ring-2 focus:ring-acont-primary/20 text-sm"
                   />
                 </div>
-              </div>
-
-              {/* Fila 1: Próximo Secuencial (informativo) + IVA — misma fila, dos columnas */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 sm:gap-4 p-1">
                 {categoryId && categorySecuencialInfo && (
-                  <div>
-                    <Label className="text-xs text-slate-500">Próximo Secuencial Categoría (Código Maestro)</Label>
+                  <div className="flex flex-col">
+                    <Label className="text-[0.85rem] font-semibold mb-1.5 text-slate-500">Próximo Secuencial</Label>
                     <Input
                       value={String(categorySecuencialInfo.secuencial)}
                       readOnly
                       aria-readonly="true"
-                      className="h-8 mt-0.5 w-full bg-slate-50 dark:bg-slate-900/50 font-mono text-sm border-slate-200 cursor-default"
+                      className="h-10 px-3 py-2.5 w-full rounded border border-slate-200 bg-slate-100 text-slate-500 cursor-default text-sm"
                     />
                   </div>
                 )}
-                <div className={!(categoryId && categorySecuencialInfo) ? "md:col-start-2" : ""}>
-                  <Label className="text-xs">IVA <span className="text-red-500">*</span></Label>
+                <div className={`flex flex-col ${!(categoryId && categorySecuencialInfo) ? "md:col-start-2" : ""}`}>
+                  <Label className="text-[0.85rem] font-semibold mb-1.5 text-slate-600">IVA <span className="text-red-500">*</span></Label>
                   <Select
                     value={taxId || "none"}
                     onValueChange={(v) => handleTaxChange(v === "none" ? "" : v)}
                   >
-                    <SelectTrigger className="h-8 mt-0.5 w-full">
+                    <SelectTrigger className="h-10 px-3 py-2.5 w-full rounded border border-slate-200 bg-[#fafafa] focus:border-acont-primary focus:ring-2 focus:ring-acont-primary/20 text-sm">
                       <SelectValue placeholder="Seleccionar impuesto" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1903,25 +1888,23 @@ export function ArticleFormDialog({
                     </SelectContent>
                   </Select>
                 </div>
-              </div>
-
-              {/* Fila 2: Observaciones — ancho completo */}
-              <div className="w-full p-1">
-                <Label htmlFor="observations" className="text-xs">Observaciones (artículo)</Label>
-                <Textarea
-                  id="observations"
-                  value={observations}
-                  onChange={(e) => setObservations(e.target.value)}
-                  placeholder="Notas generales sobre el artículo..."
-                  rows={2}
-                  className="mt-0.5 min-h-[4.5rem] text-sm w-full"
-                />
+                <div className="flex flex-col md:col-span-2">
+                  <Label htmlFor="observations" className="text-[0.85rem] font-semibold mb-1.5 text-slate-600">Observaciones</Label>
+                  <Textarea
+                    id="observations"
+                    value={observations}
+                    onChange={(e) => setObservations(e.target.value)}
+                    placeholder="Notas generales sobre el artículo..."
+                    rows={3}
+                    className="min-h-[4.5rem] px-3 py-2.5 w-full rounded border border-slate-200 bg-[#fafafa] focus:border-acont-primary focus:ring-2 focus:ring-acont-primary/20 text-sm resize-y"
+                  />
+                </div>
               </div>
               </fieldset>
               </div>
             </TabsContent>
 
-            <TabsContent value="variants" className="space-y-4 mt-4">
+            <TabsContent value="variants" className="flex-1 overflow-y-auto min-h-0 mt-0 p-4 sm:p-6 md:p-8 space-y-4 data-[state=inactive]:hidden">
               <div className="flex justify-between items-center mb-2 flex-wrap gap-2">
                 <div className="flex items-center gap-4">
                   <Label>Variantes</Label>
@@ -1988,27 +1971,23 @@ export function ArticleFormDialog({
                       setExpandedVariantIndex(open ? i : null);
                     }}
                   >
-                    <Card className="overflow-hidden">
-                      <CardHeader className="py-2.5 px-3 flex flex-row items-center justify-between space-y-0 bg-slate-50 border-b">
+                    <Card className="overflow-hidden border border-slate-200 bg-acont-surface">
+                      <CardHeader className="py-2.5 px-3 flex flex-row items-center justify-between space-y-0 bg-acont-primary/5 border-b border-acont-primary/10">
                         <CollapsibleTrigger asChild>
                           <div className="flex-1 flex flex-col gap-0.5 cursor-pointer min-w-0">
-                            <CardTitle className="text-sm font-semibold text-slate-900">Variante {i + 1}</CardTitle>
+                            <CardTitle className="text-sm font-semibold text-acont-primary">Variante {i + 1}</CardTitle>
                             <p className="text-xs text-slate-500 mt-0.5 font-normal truncate">
                               {[
                                 v.sku?.trim() || "—",
-                                code?.trim() || "",
-                                name?.trim() || "",
-                                v.measureId ? (localMeasures.find((m) => m.id === v.measureId)?.name ?? "") : "",
-                                v.colorId ? (localColors.find((c) => c.id === v.colorId)?.name ?? "") : "",
-                                v.sizeId ? (localSizes.find((s) => s.id === v.sizeId)?.name ?? "") : "",
-                                v.flavorId ? (localFlavors.find((f) => f.id === v.flavorId)?.name ?? "") : "",
+                                v.barcode?.trim() || "—",
+                                v.measureId ? (localMeasures.find((m) => m.id === v.measureId)?.name ?? "") : "—",
                                 (() => {
-                                  const w = parseFloat(String(v.weight)) || 0;
-                                  return w > 0 ? String(roundToFive(w, 5)) : "";
+                                  const c = parseFloat(String(v.cost)) || 0;
+                                  return c > 0 ? formatDecimal(c) : "—";
                                 })(),
-                              ]
-                                .filter(Boolean)
-                                .join(" · ")}
+                                v.colorId ? (localColors.find((c) => c.id === v.colorId)?.name ?? "") : "—",
+                                v.sizeId ? (localSizes.find((s) => s.id === v.sizeId)?.name ?? "") : "—",
+                              ].join(" · ")}
                             </p>
                           </div>
                         </CollapsibleTrigger>
@@ -2017,7 +1996,6 @@ export function ArticleFormDialog({
                             <>
                               <Button
                                 type="button"
-                                variant="ghost"
                                 size="sm"
                                 disabled={
                                   !effectiveArticleId ||
@@ -2032,17 +2010,16 @@ export function ArticleFormDialog({
                                       ? getVariantValidation(i).message
                                       : undefined
                                 }
-                                className="h-7 text-green-600 hover:text-green-700 hover:bg-green-50"
+                                className="h-9 px-4 rounded-md font-semibold bg-acont-primary text-white hover:bg-acont-primary/90 border-0 shadow-sm"
                               >
                                 <Check className="h-4 w-4 mr-1" />
                                 Guardar
                               </Button>
                               <Button
                                 type="button"
-                                variant="ghost"
                                 size="sm"
                                 onClick={cancelEditVariant}
-                                className="h-7 text-slate-600 hover:text-slate-700"
+                                className="h-9 px-4 rounded-md font-semibold bg-[#ecf0f1] text-slate-800 hover:bg-slate-200 border-0"
                               >
                                 <X className="h-4 w-4 mr-1" />
                                 Cancelar
@@ -2351,10 +2328,18 @@ export function ArticleFormDialog({
                         </div>
                       </div>
                       {isEditingThis && (
-                        <div className="flex justify-end gap-2 pt-3 mt-3 border-t border-slate-200">
+                        <div className="flex flex-wrap justify-end gap-3 pt-4 mt-4 border-t border-slate-200">
                           <Button
                             type="button"
-                            variant="outline"
+                            size="sm"
+                            onClick={cancelEditVariant}
+                            className="h-9 px-5 py-2.5 rounded-md font-semibold bg-[#ecf0f1] text-slate-800 hover:bg-slate-200 border-0"
+                          >
+                            <X className="h-4 w-4 mr-1" />
+                            Cancelar
+                          </Button>
+                          <Button
+                            type="button"
                             size="sm"
                             disabled={
                               !effectiveArticleId ||
@@ -2369,20 +2354,10 @@ export function ArticleFormDialog({
                                   ? getVariantValidation(i).message
                                   : undefined
                             }
-                            className="h-8 text-green-600 border-green-200 hover:bg-green-50 hover:border-green-300"
+                            className="h-9 px-5 py-2.5 rounded-md font-semibold bg-acont-primary text-white hover:bg-acont-primary/90 border-0 shadow-sm"
                           >
                             <Check className="h-4 w-4 mr-1" />
-                            Guardar
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={cancelEditVariant}
-                            className="h-8 text-slate-600"
-                          >
-                            <X className="h-4 w-4 mr-1" />
-                            Cancelar
+                            Guardar variante
                           </Button>
                         </div>
                       )}
@@ -2395,7 +2370,7 @@ export function ArticleFormDialog({
               </div>
             </TabsContent>
 
-            <TabsContent value="inventory" className="space-y-4 mt-4">
+            <TabsContent value="inventory" className="flex-1 overflow-y-auto min-h-0 mt-0 p-4 sm:p-6 md:p-8 space-y-4 data-[state=inactive]:hidden">
               {!isEditing ? (
                 <p className="text-slate-500 text-sm">Guarda el artículo primero para gestionar lotes por variante.</p>
               ) : variantsWithBatches.length === 0 ? (
@@ -2417,7 +2392,7 @@ export function ArticleFormDialog({
               )}
             </TabsContent>
 
-            <TabsContent value="photos" className="space-y-4 mt-4">
+            <TabsContent value="photos" className="flex-1 overflow-y-auto min-h-0 mt-0 p-4 sm:p-6 md:p-8 space-y-4 data-[state=inactive]:hidden">
               {!isEditing ? (
                 <p className="text-slate-500 text-sm">Guarda el artículo primero para subir imágenes.</p>
               ) : (
@@ -2490,11 +2465,22 @@ export function ArticleFormDialog({
             </TabsContent>
 
             {!canSave && validationMessage && (
-              <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2" role="status">
+              <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 shrink-0 mx-4 sm:mx-6 md:mx-8" role="status">
                 {validationMessage}
               </p>
             )}
-            <DialogFooter className="pt-4 flex-wrap gap-2">
+            {/* Footer: Nuevo Artículo a la izquierda (zona práctica); acciones a la derecha según pestaña */}
+            <DialogFooter className="border-t border-slate-200 py-4 px-4 sm:px-6 md:px-8 flex flex-wrap items-center justify-between gap-3 sm:gap-4 shrink-0 bg-white">
+              <Button
+                type="button"
+                size="sm"
+                onClick={handleNuevoClick}
+                className="order-first sm:order-none bg-acont-secondary text-white hover:bg-acont-secondary/90 border-0 font-semibold px-4 py-2.5 h-9 rounded-md shadow-sm"
+              >
+                <Plus className="h-4 w-4 mr-1.5" />
+                Nuevo Artículo
+              </Button>
+              <div className="flex flex-wrap justify-end gap-3 sm:gap-4 ml-auto">
               {activeTab === "general" && (
                 <>
                   {effectiveArticleId ? (
@@ -2505,6 +2491,7 @@ export function ArticleFormDialog({
                           variant="outline"
                           onClick={() => setGeneralTabEditMode(true)}
                           disabled={loading}
+                          className="border-slate-300 bg-[#ecf0f1] text-slate-800 hover:bg-slate-200 font-semibold px-5 py-2.5"
                         >
                           <Pencil className="h-4 w-4 mr-1" />
                           Editar
@@ -2513,9 +2500,9 @@ export function ArticleFormDialog({
                         <>
                           <Button
                             type="button"
-                            variant="outline"
                             onClick={cancelGeneralEdit}
                             disabled={loading}
+                            className="bg-[#ecf0f1] text-slate-800 hover:bg-slate-200 border-0 font-semibold px-5 py-2.5"
                           >
                             Cancelar
                           </Button>
@@ -2523,6 +2510,7 @@ export function ArticleFormDialog({
                             type="button"
                             disabled={loading || !isGeneralDirty}
                             onClick={saveGeneralArticleData}
+                            className="bg-acont-primary text-white hover:bg-acont-primary/90 border-0 font-semibold px-5 py-2.5"
                           >
                             {loading ? "Guardando..." : "Actualizar"}
                           </Button>
@@ -2535,15 +2523,22 @@ export function ArticleFormDialog({
                       disabled={loading || !canSaveGeneral}
                       onClick={saveGeneralArticleData}
                       title={!canSaveGeneral ? validationMessageGeneral : undefined}
+                      className="bg-acont-primary text-white hover:bg-acont-primary/90 border-0 font-semibold px-5 py-2.5"
                     >
-                      {loading ? "Guardando..." : "Guardar"}
+                      {loading ? "Guardando..." : "Guardar Artículo"}
                     </Button>
                   )}
                 </>
               )}
-              <Button type="button" variant="ghost" onClick={() => handleDialogOpenChange(false)}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => handleDialogOpenChange(false)}
+                className="border-slate-300 bg-[#ecf0f1] text-slate-800 hover:bg-slate-200 font-semibold px-5 py-2.5"
+              >
                 Salir
               </Button>
+              </div>
             </DialogFooter>
           </form>
         </Tabs>

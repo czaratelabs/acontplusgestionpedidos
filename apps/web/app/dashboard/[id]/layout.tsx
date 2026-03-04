@@ -4,6 +4,7 @@ import { Building2, Settings, SlidersHorizontal, FileText, Users, Truck, Briefca
 import Link from "next/link";
 import { UserNav } from "@/components/user-nav";
 import { LockedMenuItem } from "@/components/locked-menu-item";
+import { DashboardShell } from "@/components/dashboard-shell";
 
 interface TokenPayload {
   sub: string;
@@ -123,8 +124,9 @@ export default async function DashboardLayout({
     );
 
   return (
-    <div className="flex min-h-screen bg-slate-50 font-sans">
-      <aside className="w-64 bg-slate-900 text-white hidden md:flex flex-col fixed h-full shadow-xl z-50">
+    <DashboardShell
+      sidebar={
+        <aside className="fixed inset-y-0 left-0 z-50 flex h-full w-64 flex-col -translate-x-full bg-slate-900 text-white shadow-xl transition-transform duration-200 ease-out md:translate-x-0">
         <div className="p-6 border-b border-slate-800">
           <Link href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
             <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center font-bold text-white shadow-lg shadow-blue-900/50">N</div>
@@ -176,8 +178,9 @@ export default async function DashboardLayout({
           <UserNav email={user.email} name={user.name} />
         </div>
       </aside>
-
-      <main className="flex-1 md:ml-64 p-8 min-h-screen transition-all">{children}</main>
-    </div>
+    }
+    >
+      {children}
+    </DashboardShell>
   );
 }

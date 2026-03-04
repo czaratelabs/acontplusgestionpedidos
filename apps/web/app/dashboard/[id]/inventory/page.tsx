@@ -17,30 +17,41 @@ export default async function InventoryPage({ params }: { params: Promise<{ id: 
   ]);
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500">
-      <div className="flex justify-between items-start">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Inventario</h1>
-          <p className="text-slate-500 mt-1">
+    <div className="min-h-0 w-full max-w-[1600px] mx-auto space-y-4 sm:space-y-6 animate-in fade-in duration-500">
+      {/* Cabecera tipo escritorio: título + acción principal */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-start">
+        <div className="min-w-0">
+          <h1 className="font-acont text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">
+            Inventario
+          </h1>
+          <p className="text-slate-600 mt-1 text-sm sm:text-base">
             Artículos con variantes (SKU, código de barras, precios y atributos).
-            <Link href={`/dashboard/${id}/settings/catalogs`} className="ml-2 text-blue-600 hover:underline text-sm">
+            <Link
+              href={`/dashboard/${id}/settings/catalogs`}
+              className="ml-1 sm:ml-2 text-acont-primary font-medium hover:underline text-sm"
+            >
               Configurar catálogos
             </Link>
           </p>
         </div>
-        <ArticleFormDialog
-          companyId={id}
-          brands={brands}
-          categories={categories}
-          taxes={taxes}
-          measures={measures}
-          colors={colors}
-          sizes={sizes}
-          flavors={flavors}
-        />
+        <div className="shrink-0">
+          <ArticleFormDialog
+            companyId={id}
+            brands={brands}
+            categories={categories}
+            taxes={taxes}
+            measures={measures}
+            colors={colors}
+            sizes={sizes}
+            flavors={flavors}
+          />
+        </div>
       </div>
 
-      <ArticlesTable companyId={id} articles={articles} brands={brands} categories={categories} taxes={taxes} measures={measures} colors={colors} sizes={sizes} flavors={flavors} />
+      {/* Contenedor tipo escritorio: superficie con borde y scroll responsive */}
+      <div className="rounded-xl border border-slate-200 bg-acont-surface shadow-sm overflow-hidden">
+        <ArticlesTable companyId={id} articles={articles} brands={brands} categories={categories} taxes={taxes} measures={measures} colors={colors} sizes={sizes} flavors={flavors} />
+      </div>
     </div>
   );
 }

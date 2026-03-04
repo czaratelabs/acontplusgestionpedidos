@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,14 @@ import { useToast } from "@/components/ui/use-toast";
 import { ArticleFormDialog } from "./article-form-dialog";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+const TARIFF_NAMES_KEY = "TARIFF_NAMES";
+const DEFAULT_TARIFF_LABELS: Record<string, string> = {
+  "1": "Tarifa 1",
+  "2": "Tarifa 2",
+  "3": "Tarifa 3",
+  "4": "Tarifa 4",
+  "5": "Tarifa 5",
+};
 
 function ArticleThumbnail({ article }: { article: Article }) {
   const mainImage = article.images?.find((i) => i.isMain) ?? article.images?.[0];
@@ -42,6 +50,11 @@ type Category = { id: string; name: string };
 type Tax = { id: string; name: string; percentage: number };
 
 type VariantPrice = {
+  pvp1?: number;
+  pvp2?: number;
+  pvp3?: number;
+  pvp4?: number;
+  pvp5?: number;
   rentabilidad1?: number;
   rentabilidad2?: number;
   rentabilidad3?: number;
@@ -98,8 +111,32 @@ export function ArticlesTable({ companyId, articles, brands, categories, taxes, 
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [articleFormOpen, setArticleFormOpen] = useState(false);
   const [editingArticle, setEditingArticle] = useState<Article | null>(null);
+  const [tariffLabels, setTariffLabels] = useState<Record<string, string>>({ ...DEFAULT_TARIFF_LABELS });
   const router = useRouter();
   const { toast } = useToast();
+
+  useEffect(() => {
+    if (!companyId) return;
+    const controller = new AbortController();
+    fetch(`${API_BASE}/system-settings/${TARIFF_NAMES_KEY}?companyId=${encodeURIComponent(companyId)}`, {
+      credentials: "include",
+      signal: controller.signal,
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { value?: string } | null) => {
+        if (data?.value) {
+          try {
+            const parsed = JSON.parse(data.value) as Record<string, string>;
+            if (parsed && typeof parsed === "object")
+              setTariffLabels({ ...DEFAULT_TARIFF_LABELS, ...parsed });
+          } catch {
+            /* usar defaults */
+          }
+        }
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [companyId]);
 
   async function confirmDelete() {
     if (!articleToDelete) return;
@@ -130,28 +167,28 @@ export function ArticlesTable({ companyId, articles, brands, categories, taxes, 
 
   return (
     <>
-      <div className="rounded-lg border border-slate-200 overflow-hidden">
-        <Table>
+      <div className="overflow-x-auto overflow-y-hidden -mx-px">
+        <Table className="min-w-[800px]">
           <TableHeader>
-            <TableRow className="bg-slate-50">
-              <TableHead className="w-14"></TableHead>
-              <TableHead>Artículo</TableHead>
-              <TableHead>Marca</TableHead>
-              <TableHead>Categoría</TableHead>
-              <TableHead>Variantes</TableHead>
-              <TableHead className="text-right">Rent. 1</TableHead>
-              <TableHead className="text-right">Rent. 2</TableHead>
-              <TableHead className="text-right">Rent. 3</TableHead>
-              <TableHead className="text-right">Rent. 4</TableHead>
-              <TableHead className="text-right">Rent. 5</TableHead>
-              <TableHead>Impuesto</TableHead>
-              <TableHead className="text-right">Acciones</TableHead>
+            <TableRow className="bg-acont-primary/10 border-b-2 border-acont-primary/20">
+              <TableHead className="w-14 text-slate-700 font-semibold"></TableHead>
+              <TableHead className="text-slate-800 font-semibold">Artículo</TableHead>
+              <TableHead className="text-slate-800 font-semibold">Marca</TableHead>
+              <TableHead className="text-slate-800 font-semibold">Categoría</TableHead>
+              <TableHead className="text-slate-800 font-semibold">Variantes</TableHead>
+              <TableHead className="text-right text-slate-800 font-semibold">{tariffLabels["1"] ?? "Tarifa 1"}</TableHead>
+              <TableHead className="text-right text-slate-800 font-semibold">{tariffLabels["2"] ?? "Tarifa 2"}</TableHead>
+              <TableHead className="text-right text-slate-800 font-semibold">{tariffLabels["3"] ?? "Tarifa 3"}</TableHead>
+              <TableHead className="text-right text-slate-800 font-semibold">{tariffLabels["4"] ?? "Tarifa 4"}</TableHead>
+              <TableHead className="text-right text-slate-800 font-semibold">{tariffLabels["5"] ?? "Tarifa 5"}</TableHead>
+              <TableHead className="text-slate-800 font-semibold">Impuesto</TableHead>
+              <TableHead className="text-right text-slate-800 font-semibold min-w-[100px]">Acciones</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {articles.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={12} className="text-center text-slate-500 py-12">
+                <TableCell colSpan={12} className="text-center text-slate-500 py-12 sm:py-16 text-sm sm:text-base">
                   No hay artículos. Crea uno para comenzar.
                 </TableCell>
               </TableRow>
@@ -172,7 +209,7 @@ export function ArticlesTable({ companyId, articles, brands, categories, taxes, 
                       {a.variants?.map((v) => (
                         <span
                           key={v.id}
-                          className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700"
+                          className="inline-flex items-center rounded-md bg-acont-primary/10 text-acont-primary px-2 py-0.5 text-xs font-medium"
                         >
                           {v.sku}
                           {v.barcode && ` · ${v.barcode}`}
@@ -183,19 +220,19 @@ export function ArticlesTable({ companyId, articles, brands, categories, taxes, 
                     </div>
                   </TableCell>
                   <TableCell className="text-right tabular-nums text-xs">
-                    {firstPrices?.rentabilidad1 != null ? Number(firstPrices.rentabilidad1).toFixed(2) : "—"}
+                    {firstPrices?.pvp1 != null && Number(firstPrices.pvp1) > 0 ? Number(firstPrices.pvp1).toFixed(2) : "—"}
                   </TableCell>
                   <TableCell className="text-right tabular-nums text-xs">
-                    {firstPrices?.rentabilidad2 != null ? Number(firstPrices.rentabilidad2).toFixed(2) : "—"}
+                    {firstPrices?.pvp2 != null && Number(firstPrices.pvp2) > 0 ? Number(firstPrices.pvp2).toFixed(2) : "—"}
                   </TableCell>
                   <TableCell className="text-right tabular-nums text-xs">
-                    {firstPrices?.rentabilidad3 != null ? Number(firstPrices.rentabilidad3).toFixed(2) : "—"}
+                    {firstPrices?.pvp3 != null && Number(firstPrices.pvp3) > 0 ? Number(firstPrices.pvp3).toFixed(2) : "—"}
                   </TableCell>
                   <TableCell className="text-right tabular-nums text-xs">
-                    {firstPrices?.rentabilidad4 != null ? Number(firstPrices.rentabilidad4).toFixed(2) : "—"}
+                    {firstPrices?.pvp4 != null && Number(firstPrices.pvp4) > 0 ? Number(firstPrices.pvp4).toFixed(2) : "—"}
                   </TableCell>
                   <TableCell className="text-right tabular-nums text-xs">
-                    {firstPrices?.rentabilidad5 != null ? Number(firstPrices.rentabilidad5).toFixed(2) : "—"}
+                    {firstPrices?.pvp5 != null && Number(firstPrices.pvp5) > 0 ? Number(firstPrices.pvp5).toFixed(2) : "—"}
                   </TableCell>
                   <TableCell>{a.tax?.name ?? "—"}</TableCell>
                   <TableCell className="text-right">
@@ -203,20 +240,22 @@ export function ArticlesTable({ companyId, articles, brands, categories, taxes, 
                       <Button
                         variant="outline"
                         size="icon"
-                        className="h-8 w-8"
+                        className="h-8 w-8 border-acont-primary/30 text-acont-primary hover:bg-acont-primary/10"
                         onClick={() => {
                           setEditingArticle(a);
                           setArticleFormOpen(true);
                         }}
+                        aria-label="Editar artículo"
                       >
                         <Pencil className="h-4 w-4" />
                       </Button>
                       <Button
                         variant="outline"
                         size="icon"
-                        className="h-8 w-8 text-red-600 hover:text-red-700"
+                        className="h-8 w-8 text-red-600 hover:text-red-700 border-red-200 hover:bg-red-50"
                         onClick={() => setArticleToDelete(a)}
                         disabled={deletingId === a.id}
+                        aria-label="Eliminar artículo"
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>

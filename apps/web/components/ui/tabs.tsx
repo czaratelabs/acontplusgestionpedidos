@@ -47,7 +47,7 @@ const TabsList = React.forwardRef<
   <div
     ref={ref}
     className={cn(
-      "inline-flex h-9 items-center justify-center rounded-lg bg-slate-100 p-1 text-slate-500",
+      "inline-flex items-center gap-0 rounded-t-lg bg-[#f8f9fa] border-b-2 border-slate-200 p-0 text-slate-500 overflow-x-auto overflow-y-hidden scrollbar-thin touch-pan-x min-h-[48px]",
       className
     )}
     {...props}
@@ -68,15 +68,17 @@ const TabsTrigger = React.forwardRef<
       role="tab"
       aria-selected={isActive}
       className={cn(
-        "inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+        "relative inline-flex items-center justify-center whitespace-nowrap px-4 sm:px-6 py-3 text-sm font-semibold ring-offset-background transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 shrink-0 border-b-[3px] border-transparent -mb-0.5",
         isActive
-          ? "bg-white text-slate-900 shadow-sm"
-          : "hover:bg-slate-200/70 hover:text-slate-700",
+          ? "text-acont-primary bg-acont-primary/5 border-acont-primary"
+          : "text-[#7f8c8d] hover:bg-slate-200/50 hover:text-slate-700",
         className
       )}
       onClick={() => onValueChange(value)}
       {...props}
-    />
+    >
+      {props.children}
+    </button>
   );
 });
 TabsTrigger.displayName = "TabsTrigger";
