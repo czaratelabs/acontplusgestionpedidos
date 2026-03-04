@@ -34,6 +34,12 @@ import { useToast } from "@/components/ui/use-toast";
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
 type CatalogItem = { id: string; name: string };
+type CategoryItem = CatalogItem & {
+  siglas?: string;
+  secuencial?: number;
+  secuencialVariantes?: number;
+  secuencial_variantes?: number;
+};
 
 const CATALOG_CONFIG = {
   brands: { label: "Marcas", path: "brands", title: "marca" },
@@ -50,6 +56,7 @@ type CatalogsContentProps = {
   companyId: string;
   data: Record<CatalogKey, CatalogItem[]>;
   onRefresh: () => void;
+  loading?: boolean;
 };
 
 function CatalogTable({
@@ -60,12 +67,13 @@ function CatalogTable({
 }: {
   companyId: string;
   catalogKey: CatalogKey;
-  items: CatalogItem[];
+  items: (CatalogItem | CategoryItem)[];
   onRefresh: () => void;
 }) {
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editing, setEditing] = useState<CatalogItem | null>(null);
+  const [editing, setEditing] = useState<(CatalogItem | CategoryItem) | null>(null);
   const [name, setName] = useState("");
+  const [siglas, setSiglas] = useState("");
   const [loading, setLoading] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<CatalogItem | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -74,15 +82,19 @@ function CatalogTable({
 
   const basePath = `${API_BASE}/articles/catalogs/company/${companyId}/${config.path}`;
 
+  const isCategories = catalogKey === "categories";
+
   function openNew() {
     setEditing(null);
     setName("");
+    setSiglas("");
     setDialogOpen(true);
   }
 
-  function openEdit(item: CatalogItem) {
+  function openEdit(item: CatalogItem | CategoryItem) {
     setEditing(item);
     setName(item.name);
+    setSiglas((item as CategoryItem).siglas ?? "");
     setDialogOpen(true);
   }
 
@@ -99,11 +111,15 @@ function CatalogTable({
     }
     setLoading(true);
     try {
+      const body: Record<string, string | number> = { name: trimmed };
+      if (isCategories) {
+        if (siglas.trim()) body.siglas = siglas.trim().toUpperCase();
+      }
       if (editing) {
         const res = await fetch(`${basePath}/${editing.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: trimmed }),
+          body: JSON.stringify(body),
           credentials: "include",
         });
         if (!res.ok) {
@@ -115,7 +131,7 @@ function CatalogTable({
         const res = await fetch(basePath, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: trimmed }),
+          body: JSON.stringify(body),
           credentials: "include",
         });
         if (!res.ok) {
@@ -183,20 +199,36 @@ function CatalogTable({
             <TableHeader>
               <TableRow className="bg-slate-50">
                 <TableHead>Nombre</TableHead>
+                {isCategories && (
+                  <>
+                    <TableHead>Siglas</TableHead>
+                    <TableHead>Sec. Artículo</TableHead>
+                    <TableHead>Sec. Variante</TableHead>
+                  </>
+                )}
                 <TableHead className="w-24 text-right">Acciones</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {items.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={2} className="text-center text-slate-500 py-6">
+                  <TableCell colSpan={isCategories ? 5 : 2} className="text-center text-slate-500 py-6">
                     No hay {config.label.toLowerCase()}. Añade una con el botón Nuevo.
                   </TableCell>
                 </TableRow>
               ) : (
-                items.map((item) => (
+                items.map((item) => {
+                  const cat = item as CategoryItem;
+                  return (
                   <TableRow key={item.id}>
                     <TableCell className="font-medium">{item.name}</TableCell>
+                    {isCategories && (
+                      <>
+                        <TableCell>{cat.siglas ?? "—"}</TableCell>
+                        <TableCell>{cat.secuencial ?? "—"}</TableCell>
+                        <TableCell>{cat.secuencialVariantes ?? cat.secuencial_variantes ?? "—"}</TableCell>
+                      </>
+                    )}
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
                         <Button
@@ -218,7 +250,7 @@ function CatalogTable({
                       </div>
                     </TableCell>
                   </TableRow>
-                ))
+                );})
               )}
             </TableBody>
           </Table>
@@ -235,14 +267,47 @@ function CatalogTable({
                 : `Añade una nueva ${config.title} al catálogo.`}
             </DialogDescription>
           </DialogHeader>
-          <div className="py-4">
-            <Label htmlFor="name">Nombre</Label>
-            <Input
-              id="name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder={`Ej: ${config.label === "Marcas" ? "Nike" : config.label === "Categorías" ? "Ropa" : config.label === "Medidas" ? "Unidad" : config.label === "Colores" ? "Rojo" : config.label === "Tallas" ? "M" : "Chocolate"}`}
-            />
+          <div className="py-4 space-y-4">
+            <div>
+              <Label htmlFor="name">Nombre</Label>
+              <Input
+                id="name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder={`Ej: ${config.label === "Marcas" ? "Nike" : config.label === "Categorías" ? "Ropa" : config.label === "Medidas" ? "Unidad" : config.label === "Colores" ? "Rojo" : config.label === "Tallas" ? "M" : "Chocolate"}`}
+              />
+            </div>
+            {isCategories && (
+              <>
+                <div>
+                  <Label htmlFor="siglas">Siglas</Label>
+                  <Input
+                    id="siglas"
+                    value={siglas}
+                    onChange={(e) => setSiglas(e.target.value)}
+                    placeholder="Ej: HER, PIEA"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label>Secuencial Artículo</Label>
+                    <Input
+                      value={editing ? String((editing as CategoryItem).secuencial ?? "—") : "—"}
+                      readOnly
+                      className="bg-slate-50"
+                    />
+                  </div>
+                  <div>
+                    <Label>Secuencial Variante</Label>
+                    <Input
+                      value={editing ? String((editing as CategoryItem).secuencialVariantes ?? (editing as CategoryItem).secuencial_variantes ?? "—") : "—"}
+                      readOnly
+                      className="bg-slate-50"
+                    />
+                  </div>
+                </div>
+              </>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => handleDialogClose(false)}>
@@ -277,7 +342,7 @@ function CatalogTable({
   );
 }
 
-export function CatalogsContent({ companyId, data, onRefresh }: CatalogsContentProps) {
+export function CatalogsContent({ companyId, data, onRefresh, loading }: CatalogsContentProps) {
   return (
     <Tabs defaultValue="brands" className="space-y-4">
       <TabsList className="grid w-full grid-cols-3 lg:grid-cols-6">

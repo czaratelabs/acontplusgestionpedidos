@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, Star, Upload, Info } from "lucide-react";
+import { Plus, Trash2, Star, Upload, Info, Pencil, X, Check, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -40,6 +40,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { useToast } from "@/components/ui/use-toast";
 import { format, differenceInDays } from "date-fns";
 import { es } from "date-fns/locale";
@@ -121,7 +126,7 @@ const emptyPrices = (): PricesRow => ({
 });
 
 type Brand = { id: string; name: string };
-type Category = { id: string; name: string };
+type Category = { id: string; name: string; siglas?: string; secuencial?: number; secuencial_variantes?: number; secuencialVariantes?: number };
 type Tax = { id: string; name: string; percentage: number };
 
 type ArticleImage = { id: string; url: string; isMain: boolean; sortOrder: number };
@@ -202,7 +207,6 @@ function recalculateRentabilidadFromPrices(
   return result as PricesRow;
 }
 
-type CatalogItem = { id: string; name: string };
 type ArticleFormDialogProps = {
   companyId: string;
   brands: Brand[];
@@ -214,6 +218,8 @@ type ArticleFormDialogProps = {
   flavors?: CatalogItem[];
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  /** Called when user clicks "Nuevo" and confirms (if needed). Parent should clear initialData so dialog stays in creation mode. */
+  onRequestNew?: () => void;
   trigger?: React.ReactNode;
   initialData?: {
     id: string;
@@ -274,6 +280,7 @@ export function ArticleFormDialog({
   flavors = [],
   open: controlledOpen,
   onOpenChange: controlledOnOpenChange,
+  onRequestNew,
   trigger,
   initialData = null,
 }: ArticleFormDialogProps) {
@@ -297,11 +304,27 @@ export function ArticleFormDialog({
   const [brandId, setBrandId] = useState<string>("");
   const [categoryId, setCategoryId] = useState<string>("");
   const [taxId, setTaxId] = useState<string>("");
-  const [variants, setVariants] = useState<VariantRow[]>([emptyVariant()]);
+  const [variants, setVariants] = useState<VariantRow[]>([]);
   const [images, setImages] = useState<ArticleImage[]>([]);
   const [variantsWithBatches, setVariantsWithBatches] = useState<
     Array<{ id: string; sku: string; batches: Batch[] }>
   >([]);
+  const [savedArticleId, setSavedArticleId] = useState<string | null>(null);
+  const [categorySecuencialInfo, setCategorySecuencialInfo] = useState<{ secuencial: number; secuencialVariantes: number } | null>(null);
+  const [editingVariantIndex, setEditingVariantIndex] = useState<number | null>(null);
+  /** General tab: when true, fields are editable and "Actualizar"/"Cancelar" are shown (existing article only). */
+  const [generalTabEditMode, setGeneralTabEditMode] = useState(false);
+  /** Snapshot of general data for revert on cancel and dirty check. Updated on load and after successful update. */
+  const [generalDataSnapshot, setGeneralDataSnapshot] = useState<{
+    code: string;
+    name: string;
+    observations: string;
+    brandId: string;
+    categoryId: string;
+    taxId: string;
+  } | null>(null);
+  const [expandedVariantIndex, setExpandedVariantIndex] = useState<number | null>(null);
+  const [originalVariantSnapshot, setOriginalVariantSnapshot] = useState<VariantRow | null>(null);
   const [tariffLabels, setTariffLabels] = useState<Record<string, string>>({ ...DEFAULT_TARIFF_LABELS });
   const [profitabilityConfig, setProfitabilityConfig] = useState<{
     defaultPercentages: Record<string, number>;
@@ -310,7 +333,10 @@ export function ArticleFormDialog({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
   const { toast } = useToast();
-  const isEditing = Boolean(initialData);
+  const effectiveArticleId = initialData?.id ?? savedArticleId ?? null;
+  const isEditing = Boolean(initialData) || Boolean(savedArticleId);
+  /** General tab fields are read-only when existing article and not in edit mode. */
+  const generalFieldsDisabled = Boolean(effectiveArticleId) && !generalTabEditMode;
 
   const activeProfileName = profitabilityConfig
     ? categoryId
@@ -320,6 +346,382 @@ export function ArticleFormDialog({
         })()
       : "Por defecto"
     : "";
+
+  /** Validación General tab: campos obligatorios (categoría, código maestro, nombre base, IVA). Solo datos del artículo. */
+  const { canSaveGeneral, validationMessageGeneral } = useMemo(() => {
+    const ok =
+      Boolean(categoryId?.trim()) &&
+      Boolean(code?.trim()) &&
+      Boolean(name?.trim()) &&
+      Boolean(taxId?.trim());
+    let msg = "";
+    if (!ok) {
+      if (!categoryId?.trim()) msg = "Seleccione Categoría.";
+      else if (!code?.trim()) msg = "El Código Maestro es obligatorio.";
+      else if (!name?.trim()) msg = "El Nombre base es obligatorio.";
+      else msg = "Seleccione IVA.";
+    }
+    return { canSaveGeneral: ok, validationMessageGeneral: msg };
+  }, [categoryId, code, name, taxId]);
+
+  /** Validación para variantes: General ok + al menos una variante completa (SKU, barras, costo, medida). */
+  const { canSave, validationMessage } = useMemo(() => {
+    const atLeastOneVariantOk = variants.some((v) => {
+      const skuOk = Boolean(v.sku?.trim());
+      const barcodeOk = Boolean(v.barcode?.trim());
+      const costNum = parseFloat(String(v.cost)) || 0;
+      const costOk = costNum > 0;
+      const costIncIvaVal =
+        v.costIncIva != null ? String(v.costIncIva).trim() : "";
+      const costIncIvaOk =
+        costIncIvaVal !== "" || (costNum > 0 && Boolean(taxId?.trim()));
+      const measureOk = Boolean(v.measureId?.trim());
+      return skuOk && barcodeOk && costOk && costIncIvaOk && measureOk;
+    });
+    const canSave = canSaveGeneral && atLeastOneVariantOk;
+    let message = validationMessageGeneral;
+    if (message) return { canSave, validationMessage: message };
+    if (!atLeastOneVariantOk)
+      message =
+        "Complete al menos una variante: SKU, Código de barras, Costo SIN IVA, Costo INC IVA y Medida.";
+    return { canSave, validationMessage: message };
+  }, [canSaveGeneral, validationMessageGeneral, categoryId, code, name, taxId, variants]);
+
+  /** Habilitar "Añadir Variante" cuando el artículo tiene id y nadie está editando. */
+  const canAddVariant = effectiveArticleId != null && editingVariantIndex === null;
+
+  /** General tab has unsaved changes (vs snapshot). */
+  const isGeneralDirty = useMemo(() => {
+    if (generalDataSnapshot == null) return false;
+    return (
+      code !== generalDataSnapshot.code ||
+      name !== generalDataSnapshot.name ||
+      observations !== generalDataSnapshot.observations ||
+      brandId !== generalDataSnapshot.brandId ||
+      categoryId !== generalDataSnapshot.categoryId ||
+      taxId !== generalDataSnapshot.taxId
+    );
+  }, [generalDataSnapshot, code, name, observations, brandId, categoryId, taxId]);
+
+  /** Variants tab: a variant form is open (adding new or editing existing). Blocks tab switch until Save or Cancel. */
+  const isVariantFormOpen = editingVariantIndex !== null;
+
+  /** Variants tab has unsaved changes (variant being edited has modifications). */
+  const isVariantsDirty =
+    editingVariantIndex !== null && isVariantDirty(editingVariantIndex);
+
+  /** Form is "locked" when General has unsaved changes or a variant form is open (add/edit). Used for tab/dialog/beforeunload guards. */
+  const isFormLocked = isGeneralDirty || isVariantFormOpen;
+
+  /** Form is "empty" when key general fields are not filled (category, master code, base name). Used for new-article tab guard. */
+  const isFormEmpty = useMemo(
+    () =>
+      !categoryId?.trim() &&
+      !code?.trim() &&
+      !name?.trim(),
+    [categoryId, code, name]
+  );
+
+  /** Variantes tab is only available after the article has a persistent id (saved). */
+  const isVariantsTabDisabled = !effectiveArticleId;
+
+  /** Unsaved-changes confirmation: pendingTab = tab to switch to, or null = user wanted to close dialog. */
+  const [unsavedConfirmOpen, setUnsavedConfirmOpen] = useState(false);
+  const [pendingTab, setPendingTab] = useState<string | null>(null);
+  /** Confirmation for "Nuevo" when there are unsaved changes. */
+  const [nuevoConfirmOpen, setNuevoConfirmOpen] = useState(false);
+
+  function isVariantDirty(index: number): boolean {
+    if (originalVariantSnapshot == null || editingVariantIndex !== index) return false;
+    const current = variants[index];
+    if (!current) return false;
+    return JSON.stringify(current) !== JSON.stringify(originalVariantSnapshot);
+  }
+
+  /** Mandatory variant fields: sku, barcode, cost (SIN IVA > 0), cost INC IVA, measure_id. Used to enable/disable Guardar and show validation. */
+  function getVariantValidation(index: number): { valid: boolean; message: string } {
+    const v = variants[index];
+    if (!v) return { valid: false, message: "Variante no encontrada." };
+    const missing: string[] = [];
+    if (!v.sku?.trim()) missing.push("SKU");
+    if (!v.barcode?.trim()) missing.push("Código de barras");
+    const costNum = parseFloat(String(v.cost)) || 0;
+    if (costNum <= 0) missing.push("Precio de Costo SIN IVA (mayor a cero)");
+    const costIncIvaVal = v.costIncIva != null ? String(v.costIncIva).trim() : "";
+    const costIncIvaNum = parseFloat(costIncIvaVal) || 0;
+    const costIncIvaOk = (costIncIvaVal !== "" && costIncIvaNum > 0) || (costNum > 0 && Boolean(taxId?.trim()));
+    if (!costIncIvaOk) missing.push("Precio de Costo INC IVA (mayor a cero)");
+    if (!v.measureId?.trim()) missing.push("Medida");
+    const valid = missing.length === 0;
+    const message = valid ? "" : "Complete los campos obligatorios: " + missing.join(", ") + ".";
+    return { valid, message };
+  }
+
+  function startEditVariant(index: number) {
+    const v = variants[index];
+    if (!v) return;
+    setOriginalVariantSnapshot(JSON.parse(JSON.stringify(v)));
+    setEditingVariantIndex(index);
+    setExpandedVariantIndex(index);
+  }
+
+  function cancelEditVariant() {
+    if (editingVariantIndex == null) return;
+    if (originalVariantSnapshot) {
+      setVariants((prev) => {
+        const next = [...prev];
+        next[editingVariantIndex] = originalVariantSnapshot;
+        return next;
+      });
+    } else {
+      removeVariant(editingVariantIndex);
+    }
+    setEditingVariantIndex(null);
+    setOriginalVariantSnapshot(null);
+    setExpandedVariantIndex(null);
+  }
+
+  /** Build a single variant payload for POST/PATCH article-variants. */
+  function buildSingleVariantPayload(index: number) {
+    const vr = variants[index];
+    if (!vr) return null;
+    const p = vr.prices;
+    return {
+      sku: vr.sku.trim(),
+      barcode: vr.barcode?.trim() || null,
+      cost: parseFloat(vr.cost) || 0,
+      colorId: vr.colorId?.trim() || null,
+      sizeId: vr.sizeId?.trim() || null,
+      flavorId: vr.flavorId?.trim() || null,
+      measureId: vr.measureId?.trim() || null,
+      stockActual: 0,
+      stockMin: 0,
+      weight: parseFloat(vr.weight) || 0,
+      observations: vr.observations?.trim() || null,
+      prices: {
+        precioVenta1: parseFloat(p.precioVenta1) || 0,
+        precioVenta2: parseFloat(p.precioVenta2) || 0,
+        precioVenta3: parseFloat(p.precioVenta3) || 0,
+        precioVenta4: parseFloat(p.precioVenta4) || 0,
+        precioVenta5: parseFloat(p.precioVenta5) || 0,
+        pvp1: parseFloat(p.pvp1) || 0,
+        pvp2: parseFloat(p.pvp2) || 0,
+        pvp3: parseFloat(p.pvp3) || 0,
+        pvp4: parseFloat(p.pvp4) || 0,
+        pvp5: parseFloat(p.pvp5) || 0,
+      },
+    };
+  }
+
+  /** Map API variant response to local state. */
+  function mapApiVariantsToState(apiVariants: Array<Record<string, unknown>>) {
+    return apiVariants.map((vr) => {
+      const p = (vr.prices as Record<string, number>[])?.[0];
+      const costNum = Number(vr.cost ?? 0);
+      const ivaPct = taxId ? (taxes.find((t) => t.id === taxId)?.percentage ?? 0) : 0;
+      const pricesBase: PricesRow = {
+        precioVenta1: formatDecimal(p?.precioVenta1 ?? 0),
+        precioVenta2: formatDecimal(p?.precioVenta2 ?? 0),
+        precioVenta3: formatDecimal(p?.precioVenta3 ?? 0),
+        precioVenta4: formatDecimal(p?.precioVenta4 ?? 0),
+        precioVenta5: formatDecimal(p?.precioVenta5 ?? 0),
+        pvp1: formatDecimal(p?.pvp1 ?? 0),
+        pvp2: formatDecimal(p?.pvp2 ?? 0),
+        pvp3: formatDecimal(p?.pvp3 ?? 0),
+        pvp4: formatDecimal(p?.pvp4 ?? 0),
+        pvp5: formatDecimal(p?.pvp5 ?? 0),
+        porcentajeRentabilidad1: "0",
+        porcentajeRentabilidad2: "0",
+        porcentajeRentabilidad3: "0",
+        porcentajeRentabilidad4: "0",
+        porcentajeRentabilidad5: "0",
+        rentabilidad1: p?.rentabilidad1 != null ? formatDecimal(p.rentabilidad1) : "0",
+        rentabilidad2: p?.rentabilidad2 != null ? formatDecimal(p.rentabilidad2) : "0",
+        rentabilidad3: p?.rentabilidad3 != null ? formatDecimal(p.rentabilidad3) : "0",
+        rentabilidad4: p?.rentabilidad4 != null ? formatDecimal(p.rentabilidad4) : "0",
+        rentabilidad5: p?.rentabilidad5 != null ? formatDecimal(p.rentabilidad5) : "0",
+        rentabilidadIncIva1: "0",
+        rentabilidadIncIva2: "0",
+        rentabilidadIncIva3: "0",
+        rentabilidadIncIva4: "0",
+        rentabilidadIncIva5: "0",
+      };
+      const prices = recalculateRentabilidadFromPrices(costNum, ivaPct, pricesBase);
+      return {
+        id: vr.id as string,
+        sku: String(vr.sku ?? ""),
+        barcode: String(vr.barcode ?? ""),
+        cost: formatDecimal(vr.cost ?? 0),
+        colorId: String(vr.colorId ?? ""),
+        sizeId: String(vr.sizeId ?? ""),
+        flavorId: String(vr.flavorId ?? ""),
+        measureId: String(vr.measureId ?? ""),
+        weight: String(vr.weight ?? 0),
+        observations: String(vr.observations ?? ""),
+        prices,
+      };
+    });
+  }
+
+  /** Saves only General tab data (Article entity). Excludes variants. Uses dedicated /general endpoints. */
+  async function saveGeneralArticleData() {
+    if (!canSaveGeneral) {
+      toast({
+        title: "Datos incompletos",
+        description: validationMessageGeneral || "Complete Categoría, Código maestro, Nombre base e IVA.",
+        variant: "destructive",
+      });
+      return;
+    }
+    /** Payload solo datos generales, sin variantes ni campos de variante. */
+    const payload = {
+      categoryId: categoryId.trim(),
+      code: code.trim(),
+      name: name.trim(),
+      taxId: taxId.trim(),
+      brandId: brandId || null,
+      observations: observations.trim() || null,
+    };
+    setLoading(true);
+    try {
+      if (effectiveArticleId) {
+        const res = await fetch(
+          `${API_BASE}/articles/${effectiveArticleId}/general?companyId=${encodeURIComponent(companyId)}`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+            credentials: "include",
+          }
+        );
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.message ?? "Error al actualizar");
+        setGeneralDataSnapshot({
+          code: code.trim(),
+          name: name.trim(),
+          observations: observations.trim(),
+          brandId: brandId || "",
+          categoryId: categoryId || "",
+          taxId: taxId || "",
+        });
+        setGeneralTabEditMode(false);
+        router.refresh();
+        toast({ title: "Datos generales actualizados", description: "Los datos se han guardado correctamente." });
+      } else {
+        const res = await fetch(
+          `${API_BASE}/articles/company/${companyId}/general`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+            credentials: "include",
+          }
+        );
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.message ?? "Error al guardar");
+        if (data?.id) {
+          setSavedArticleId(data.id);
+          setGeneralDataSnapshot({
+            code: code.trim(),
+            name: name.trim(),
+            observations: observations.trim(),
+            brandId: brandId || "",
+            categoryId: categoryId || "",
+            taxId: taxId || "",
+          });
+        }
+        const apiVariants = data?.variants ?? [];
+        setVariantsWithBatches(
+          apiVariants.map((v: { id: string; sku: string; batches?: Batch[] }) => ({
+            id: v.id,
+            sku: v.sku,
+            batches: v.batches ?? [],
+          }))
+        );
+        setVariants(
+          apiVariants.length > 0 ? mapApiVariantsToState(apiVariants) : []
+        );
+        if (categoryId) void applyCategoryCodes(categoryId);
+        setActiveTab("variants");
+        setEditingVariantIndex(null);
+        setExpandedVariantIndex(null);
+        setOriginalVariantSnapshot(null);
+        router.refresh();
+        toast({ title: "Artículo creado", description: "Los datos se han guardado correctamente." });
+      }
+    } catch (err) {
+      toast({
+        title: "Error",
+        description: err instanceof Error ? err.message : "No se pudo guardar.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  /** Saves a single variant: POST for new, PATCH for existing. Only enabled when article has valid id. */
+  async function saveSingleVariant(index: number) {
+    if (!effectiveArticleId) return;
+    const v = variants[index];
+    if (!v) return;
+    const { valid, message } = getVariantValidation(index);
+    if (!valid) {
+      toast({ title: "Datos incompletos", description: message, variant: "destructive" });
+      return;
+    }
+    const payload = buildSingleVariantPayload(index);
+    if (!payload) return;
+
+    const isNew = !v.id;
+    const hasChanges = isNew || isVariantDirty(index);
+    if (!hasChanges) return;
+
+    setLoading(true);
+    try {
+      const url = isNew
+        ? `${API_BASE}/articles/${effectiveArticleId}/variants?companyId=${encodeURIComponent(companyId)}`
+        : `${API_BASE}/articles/variants/${v.id}?companyId=${encodeURIComponent(companyId)}`;
+      const method = isNew ? "POST" : "PATCH";
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        credentials: "include",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message ?? "Error al guardar variante");
+
+      const allVariants = data?.variants ?? [];
+
+      setVariantsWithBatches(
+        (allVariants as Array<{ id: string; sku: string; batches?: Batch[] }>).map((vr) => ({
+          id: vr.id,
+          sku: vr.sku,
+          batches: vr.batches ?? [],
+        }))
+      );
+      setVariants(
+        (allVariants as Array<Record<string, unknown>>).length > 0
+          ? mapApiVariantsToState(allVariants as Array<Record<string, unknown>>)
+          : []
+      );
+      setOriginalVariantSnapshot(null);
+      setEditingVariantIndex(null);
+      setExpandedVariantIndex(null);
+      router.refresh();
+      toast({ title: isNew ? "Variante creada" : "Variante actualizada", description: "Los datos se han guardado correctamente." });
+      if (categoryId) void applyCategoryCodes(categoryId);
+    } catch (err) {
+      toast({
+        title: "Error",
+        description: err instanceof Error ? err.message : "No se pudo guardar la variante.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  }
 
   useEffect(() => {
     if (!open || !companyId) return;
@@ -389,12 +791,22 @@ export function ArticleFormDialog({
   useEffect(() => {
     if (open) {
       if (initialData) {
+        setSavedArticleId(null);
         setCode(initialData.code ?? "");
         setName(initialData.name);
         setObservations(initialData.observations ?? "");
         setBrandId(initialData.brandId ?? "");
         setCategoryId(initialData.categoryId ?? "");
         setTaxId(initialData.taxId ?? "");
+        setGeneralDataSnapshot({
+          code: initialData.code ?? "",
+          name: initialData.name,
+          observations: initialData.observations ?? "",
+          brandId: initialData.brandId ?? "",
+          categoryId: initialData.categoryId ?? "",
+          taxId: initialData.taxId ?? "",
+        });
+        setGeneralTabEditMode(false);
         setImages(initialData.images ?? []);
         setVariantsWithBatches(
           (initialData.variants ?? []).map((v) => ({
@@ -404,8 +816,8 @@ export function ArticleFormDialog({
           }))
         );
         setVariants(
-          initialData.variants?.length
-            ? initialData.variants.map((v) => {
+          (initialData.variants?.length ?? 0) > 0
+            ? initialData.variants!.map((v) => {
                 const p = v.prices?.[0];
                 const costNum = Number(v.cost ?? 0);
                 const ivaPct = initialData.taxId ? (taxes.find((t) => t.id === initialData.taxId)?.percentage ?? 0) : 0;
@@ -451,18 +863,36 @@ export function ArticleFormDialog({
                   prices,
                 };
               })
-            : [emptyVariant()]
+            : []
         );
+        if (initialData.categoryId) void applyCategoryCodes(initialData.categoryId);
+        setEditingVariantIndex(null);
+        setExpandedVariantIndex(null);
+        setOriginalVariantSnapshot(null);
       } else {
+        setSavedArticleId(null);
+        setCategorySecuencialInfo(null);
+        setEditingVariantIndex(null);
+        setExpandedVariantIndex(null);
+        setOriginalVariantSnapshot(null);
         setCode("");
         setName("");
         setObservations("");
         setBrandId("");
         setCategoryId("");
         setTaxId("");
+        setGeneralDataSnapshot({
+          code: "",
+          name: "",
+          observations: "",
+          brandId: "",
+          categoryId: "",
+          taxId: "",
+        });
+        setGeneralTabEditMode(false);
         setImages([]);
         setVariantsWithBatches([]);
-        setVariants([emptyVariant()]);
+        setVariants([]);
       }
     }
   }, [open, initialData]);
@@ -484,12 +914,121 @@ export function ArticleFormDialog({
     );
   }, [categoryId, profitabilityConfig, isEditing]);
 
+  /** Aviso nativo del navegador al recargar/cerrar pestaña si hay cambios sin guardar. */
+  useEffect(() => {
+    if (!open || !isFormLocked) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [open, isFormLocked]);
+
+  /** Al seleccionar categoría: auto-rellenar código, SKU y código de barras (solo en modo nuevo artículo) */
+  function handleCategoryChange(newCategoryId: string) {
+    setCategoryId(newCategoryId);
+    if (!newCategoryId) {
+      setCategorySecuencialInfo(null);
+      return;
+    }
+    applyCategoryCodes(newCategoryId);
+  }
+
+  async function applyCategoryCodes(catId: string) {
+    let cat = localCategories.find((c) => c.id === catId) as Category | undefined;
+    const hasSeqVar = cat?.secuencialVariantes != null || cat?.secuencial_variantes != null;
+    const needsFetch = !cat?.siglas && cat?.secuencial == null && !hasSeqVar;
+    if (needsFetch) {
+      try {
+        const res = await fetch(
+          `${API_BASE}/articles/catalogs/company/${companyId}/categories/${catId}`,
+          { credentials: "include" }
+        );
+        if (res.ok) {
+          const data = await res.json();
+          cat = data;
+          setLocalCategories((prev) => {
+            const idx = prev.findIndex((c) => c.id === catId);
+            if (idx >= 0) {
+              const next = [...prev];
+              next[idx] = { ...next[idx], ...data };
+              return next;
+            }
+            return [...prev, data];
+          });
+        }
+      } catch {
+        /* ignorar */
+      }
+    }
+    const siglas = cat?.siglas?.trim();
+    const secuencial = cat?.secuencial;
+    const secuencialVariantes = cat?.secuencialVariantes ?? cat?.secuencial_variantes;
+    if (secuencial != null && secuencialVariantes != null) {
+      setCategorySecuencialInfo({ secuencial, secuencialVariantes });
+    }
+    if (siglas != null && secuencial != null && secuencialVariantes != null && !isEditing) {
+      // Código maestro: SIGLAS + SECUENCIAL
+      setCode(siglas + String(secuencial));
+      // SKU: "SKU" + SIGLAS + SECUENCIAL_VARIANTES | Código barras: "CB" + SIGLAS + SECUENCIAL_VARIANTES
+      const baseVariante = siglas + String(secuencialVariantes);
+      setVariants((prev) => {
+        const next = [...prev];
+        if (next[0]) {
+          next[0] = {
+            ...next[0],
+            sku: "SKU" + baseVariante,
+            barcode: "CB" + baseVariante,
+          };
+        }
+        return next;
+      });
+    }
+  }
+
   function addVariant() {
-    setVariants((prev) => [...prev, emptyVariant()]);
+    const cat = localCategories.find((c) => c.id === categoryId) as Category | undefined;
+    const siglas = cat?.siglas?.trim();
+    const secuencialVariante =
+      categorySecuencialInfo?.secuencialVariantes ??
+      cat?.secuencialVariantes ??
+      cat?.secuencial_variantes;
+
+    let sku = "";
+    let barcode = "";
+    if (siglas != null && secuencialVariante != null) {
+      const num = secuencialVariante + variants.length;
+      sku = "SKU" + siglas + String(num);
+      barcode = "CB" + siglas + String(num);
+    }
+
+    const baseVariant = { ...emptyVariant(), sku, barcode };
+
+    // Initialize PVP table with price profile: category-based or default
+    const profile = categoryId && profitabilityConfig
+      ? profitabilityConfig.profiles.find((p) => p.categoryIds.includes(categoryId))
+      : null;
+    const percentages = profile?.percentages ?? profitabilityConfig?.defaultPercentages ?? {};
+    const prices = { ...baseVariant.prices } as Record<string, string>;
+    for (const key of TARIFAS_KEYS) {
+      prices[`porcentajeRentabilidad${key}`] = String(percentages[String(key)] ?? 0);
+    }
+    const newVariant = { ...baseVariant, prices: prices as PricesRow };
+
+    const newIndex = variants.length;
+    setVariants((prev) => [...prev, newVariant]);
+    setOriginalVariantSnapshot(null);
+    setEditingVariantIndex(newIndex);
+    setExpandedVariantIndex(newIndex);
+
+    if (profitabilityConfig) {
+      const profileName = profile?.name ?? "Por defecto";
+      toast({ title: "Perfil aplicado", description: `Tarifas inicializadas con perfil: ${profileName}. Introduce el costo para calcular los PVP.` });
+    }
   }
 
   function removeVariant(index: number) {
-    if (variants.length <= 1) return;
+    if (variants.length <= 0) return;
     setVariants((prev) => prev.filter((_, i) => i !== index));
   }
 
@@ -542,6 +1081,38 @@ export function ArticleFormDialog({
       (next[variantIndex].prices as Record<string, string>)[field] = value;
       return next;
     });
+  }
+
+  /**
+   * Actualización reactiva al cambiar el IVA a nivel artículo: recalcula PVP y Valor Rent. INC IVA
+   * en todas las filas de tarifas. Mantiene precio_venta y % Rent sin cambios. También actualiza
+   * el coste INC IVA de cada variante para coherencia.
+   */
+  function handleTaxChange(newTaxId: string) {
+    const newIvaPct = newTaxId ? (taxes.find((t) => t.id === newTaxId)?.percentage ?? 0) : 0;
+    setTaxId(newTaxId);
+    setVariants((prev) =>
+      prev.map((variant) => {
+        const costNum = roundToFive(parseFloat(String(variant.cost)) || 0, 5);
+        const costIncIva =
+          newIvaPct !== 0 ? roundToFive(costNum * (1 + newIvaPct / 100), 5) : costNum;
+        const costIncIvaStr = formatDecimal(costIncIva);
+        const prices = { ...(variant.prices as Record<string, string>) };
+        for (const key of TARIFAS_KEYS) {
+          const precioVentaNum = parseFloat(String(prices[`precioVenta${key}`] ?? "")) || 0;
+          if (precioVentaNum > 0) {
+            const pvp = roundToFive(precioVentaNum * (1 + newIvaPct / 100), 5);
+            const valorRentIncIva = roundToFive(pvp - costIncIva, 5);
+            prices[`pvp${key}`] = formatDecimal(pvp);
+            prices[`rentabilidadIncIva${key}`] = formatDecimal(valorRentIncIva);
+          } else {
+            prices[`pvp${key}`] = "0";
+            prices[`rentabilidadIncIva${key}`] = "0";
+          }
+        }
+        return { ...variant, costIncIva: costIncIvaStr, prices: prices as PricesRow };
+      })
+    );
   }
 
   /**
@@ -940,13 +1511,13 @@ export function ArticleFormDialog({
 
   async function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>, isMain = false) {
     const file = e.target.files?.[0];
-    if (!file || !initialData) return;
+    if (!file || !effectiveArticleId) return;
     setUploading(true);
     try {
       const formData = new FormData();
       formData.append("file", file);
       const res = await fetch(
-        `${API_BASE}/articles/${initialData.id}/images?companyId=${encodeURIComponent(companyId)}&isMain=${isMain}`,
+        `${API_BASE}/articles/${effectiveArticleId}/images?companyId=${encodeURIComponent(companyId)}&isMain=${isMain}`,
         {
           method: "POST",
           body: formData,
@@ -977,10 +1548,10 @@ export function ArticleFormDialog({
   }
 
   async function setMainImage(imageId: string) {
-    if (!initialData) return;
+    if (!effectiveArticleId) return;
     try {
       await fetch(
-        `${API_BASE}/articles/${initialData.id}/images/${imageId}/main?companyId=${encodeURIComponent(companyId)}`,
+        `${API_BASE}/articles/${effectiveArticleId}/images/${imageId}/main?companyId=${encodeURIComponent(companyId)}`,
         { method: "PATCH", credentials: "include" }
       );
       setImages((prev) =>
@@ -994,10 +1565,10 @@ export function ArticleFormDialog({
   }
 
   async function removeImage(imageId: string) {
-    if (!initialData) return;
+    if (!effectiveArticleId) return;
     try {
       await fetch(
-        `${API_BASE}/articles/${initialData.id}/images/${imageId}?companyId=${encodeURIComponent(companyId)}`,
+        `${API_BASE}/articles/${effectiveArticleId}/images/${imageId}?companyId=${encodeURIComponent(companyId)}`,
         { method: "DELETE", credentials: "include" }
       );
       setImages((prev) => prev.filter((i) => i.id !== imageId));
@@ -1069,128 +1640,187 @@ export function ArticleFormDialog({
     }
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!code.trim()) {
-      toast({ title: "Error", description: "El código de artículo (maestro) es obligatorio.", variant: "destructive" });
-      return;
-    }
-    if (!name.trim()) {
-      toast({ title: "Error", description: "El nombre es obligatorio.", variant: "destructive" });
-      return;
-    }
-    const validVariants = variants.filter((v) => v.sku.trim());
-    setLoading(true);
-    try {
-      const payload = {
-        code: code.trim(),
-        name: name.trim(),
-        brandId: brandId || null,
-        categoryId: categoryId || null,
-        taxId: taxId || null,
-        observations: observations.trim() || null,
-        variants: validVariants.length ? validVariants.map((v) => ({
-          sku: v.sku.trim(),
-          barcode: v.barcode.trim() || null,
-          cost: parseFloat(v.cost) || 0,
-          colorId: v.colorId?.trim() || null,
-          sizeId: v.sizeId?.trim() || null,
-          flavorId: v.flavorId?.trim() || null,
-          measureId: v.measureId?.trim() || null,
-          stockActual: 0,
-          stockMin: 0,
-          weight: parseFloat(v.weight) || 0,
-          observations: v.observations?.trim() || null,
-          prices: {
-            precioVenta1: parseFloat(v.prices.precioVenta1) || 0,
-            precioVenta2: parseFloat(v.prices.precioVenta2) || 0,
-            precioVenta3: parseFloat(v.prices.precioVenta3) || 0,
-            precioVenta4: parseFloat(v.prices.precioVenta4) || 0,
-            precioVenta5: parseFloat(v.prices.precioVenta5) || 0,
-            pvp1: parseFloat(v.prices.pvp1) || 0,
-            pvp2: parseFloat(v.prices.pvp2) || 0,
-            pvp3: parseFloat(v.prices.pvp3) || 0,
-            pvp4: parseFloat(v.prices.pvp4) || 0,
-            pvp5: parseFloat(v.prices.pvp5) || 0,
-          },
-        })) : [],
-      };
+  /** Reverts general tab to snapshot and exits edit mode (existing article). */
+  function cancelGeneralEdit() {
+    if (generalDataSnapshot == null) return;
+    setCode(generalDataSnapshot.code);
+    setName(generalDataSnapshot.name);
+    setObservations(generalDataSnapshot.observations);
+    setBrandId(generalDataSnapshot.brandId);
+    setCategoryId(generalDataSnapshot.categoryId);
+    setTaxId(generalDataSnapshot.taxId);
+    setGeneralTabEditMode(false);
+    toast({ title: "Cambios descartados", description: "Se han restaurado los datos originales." });
+  }
 
-      const url = isEditing
-        ? `${API_BASE}/articles/${initialData!.id}?companyId=${encodeURIComponent(companyId)}`
-        : `${API_BASE}/articles/company/${companyId}`;
-      const method = isEditing ? "PATCH" : "POST";
-
-      const res = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-        credentials: "include",
-      });
-
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(data.message ?? "Error al guardar");
+  /** Handles tab change: blocks Variantes until article is saved; shows empty vs unsaved messaging. */
+  function handleTabChange(newTab: string) {
+    if (newTab === "variants" && !effectiveArticleId) {
+      if (isFormEmpty) {
+        toast({
+          title: "Complete la información general",
+          description: "Por favor, primero registre la información general del artículo para habilitar las demás secciones.",
+          variant: "destructive",
+        });
+      } else {
+        setPendingTab(newTab);
+        setUnsavedConfirmOpen(true);
       }
+      return;
+    }
+    if (isFormLocked) {
+      setPendingTab(newTab);
+      setUnsavedConfirmOpen(true);
+      return;
+    }
+    setActiveTab(newTab);
+  }
+
+  /** Reverts current tab's unsaved changes, then navigates to pendingTab or closes dialog. */
+  function discardChangesAndProceed() {
+    if (activeTab === "general" && isGeneralDirty && generalDataSnapshot != null) {
+      setCode(generalDataSnapshot.code);
+      setName(generalDataSnapshot.name);
+      setObservations(generalDataSnapshot.observations);
+      setBrandId(generalDataSnapshot.brandId);
+      setCategoryId(generalDataSnapshot.categoryId);
+      setTaxId(generalDataSnapshot.taxId);
+      setGeneralTabEditMode(false);
+    }
+    if (activeTab === "variants" && isVariantFormOpen) cancelEditVariant();
+    setUnsavedConfirmOpen(false);
+    if (pendingTab !== null) {
+      setActiveTab(pendingTab);
+      setPendingTab(null);
+    } else {
       setOpen(false);
-      router.refresh();
-      toast({
-        title: isEditing ? "Artículo actualizado" : "Artículo creado",
-        description: "Los datos se han guardado correctamente.",
-      });
-      if (!isEditing && data?.id) {
-        setVariantsWithBatches(
-          (data.variants ?? []).map((v: { id: string; sku: string; batches?: Batch[] }) => ({
-            id: v.id,
-            sku: v.sku,
-            batches: v.batches ?? [],
-          }))
-        );
-      }
-    } catch (err) {
-      toast({
-        title: "Error",
-        description: err instanceof Error ? err.message : "No se pudo guardar.",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
+      setPendingTab(null);
     }
+    toast({ title: "Cambios descartados", description: "Se han restaurado los datos sin guardar." });
+  }
+
+  /** Full reset to "new article" mode: General tab, clear all state, clear article id. Próximo Secuencial is cleared (no category). */
+  function performResetToNew() {
+    setActiveTab("general");
+    setSavedArticleId(null);
+    setCategorySecuencialInfo(null);
+    setEditingVariantIndex(null);
+    setExpandedVariantIndex(null);
+    setOriginalVariantSnapshot(null);
+    setCode("");
+    setName("");
+    setObservations("");
+    setBrandId("");
+    setCategoryId("");
+    setTaxId("");
+    setGeneralDataSnapshot({
+      code: "",
+      name: "",
+      observations: "",
+      brandId: "",
+      categoryId: "",
+      taxId: "",
+    });
+    setGeneralTabEditMode(false);
+    setImages([]);
+    setVariantsWithBatches([]);
+    setVariants([]);
+    onRequestNew?.();
+  }
+
+  /** Click on global "Nuevo": if dirty, show confirmation; else reset to new article. */
+  function handleNuevoClick() {
+    if (isFormLocked) {
+      setNuevoConfirmOpen(true);
+      return;
+    }
+    performResetToNew();
+  }
+
+  /** User confirmed "Descartar e iniciar nuevo" in nuevo confirm dialog. */
+  function confirmNuevoAndReset() {
+    setNuevoConfirmOpen(false);
+    performResetToNew();
+  }
+
+  /** Intercepts dialog close: if form locked, show confirmation instead of closing. */
+  function handleDialogOpenChange(nextOpen: boolean) {
+    if (!nextOpen && isFormLocked) {
+      setPendingTab(null);
+      setUnsavedConfirmOpen(true);
+      return;
+    }
+    setOpen(nextOpen);
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <>
+    <Dialog open={open} onOpenChange={handleDialogOpenChange}>
       {!isControlled && (
         <DialogTrigger asChild>
           {trigger ?? <Button className="bg-slate-900 hover:bg-slate-800">+ Nuevo Artículo</Button>}
         </DialogTrigger>
       )}
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
+        <DialogHeader className="space-y-1.5">
           <DialogTitle>{isEditing ? "Editar Artículo" : "Nuevo Artículo"}</DialogTitle>
-          <DialogDescription>
-            Puedes guardar solo los datos generales (código, nombre, marca, etc.) y añadir variantes después.
-          </DialogDescription>
+          <div className="flex flex-col gap-3 pt-0.5 sm:flex-row sm:items-center sm:gap-4">
+            <DialogDescription className="flex-1 min-w-0 sm:pr-4">
+              Puedes guardar solo los datos generales (código, nombre, marca, etc.) y añadir variantes después.
+            </DialogDescription>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleNuevoClick}
+              className="shrink-0 self-end sm:self-center"
+            >
+              <Plus className="h-4 w-4 mr-1" />
+              Nuevo
+            </Button>
+          </div>
         </DialogHeader>
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <Tabs value={activeTab} onValueChange={handleTabChange}>
           <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="general">General</TabsTrigger>
-            <TabsTrigger value="variants">Variantes</TabsTrigger>
+            <TabsTrigger
+              value="variants"
+              className={isVariantsTabDisabled ? "opacity-60 pointer-events-auto data-[state=inactive]:opacity-60" : ""}
+              title={isVariantsTabDisabled ? "Guarde primero la información general para habilitar Variantes" : undefined}
+            >
+              <span className="flex items-center gap-1.5">
+                {isVariantsTabDisabled && <Lock className="h-3.5 w-3.5 shrink-0" />}
+                Variantes
+              </span>
+            </TabsTrigger>
             <TabsTrigger value="inventory">Inventario</TabsTrigger>
             <TabsTrigger value="photos">Fotos</TabsTrigger>
           </TabsList>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (effectiveArticleId && generalTabEditMode) saveGeneralArticleData();
+              else if (!effectiveArticleId) saveGeneralArticleData();
+            }}
+            className="space-y-4"
+          >
             <TabsContent value="general" className="space-y-3 mt-3">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 sm:gap-3">
+              <div
+                className={`rounded-lg border-2 transition-colors ${
+                  generalTabEditMode ? "border-amber-200 bg-amber-50/30" : "border-transparent"
+                } ${generalFieldsDisabled ? "opacity-90" : ""}`}
+              >
+              <fieldset disabled={generalFieldsDisabled} className="disabled:opacity-70 disabled:pointer-events-none [&_*]:disabled:pointer-events-none min-w-0">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 sm:gap-3 p-1">
                 <div>
-                  <Label className="text-xs">Categoría</Label>
+                  <Label className="text-xs">Categoría <span className="text-red-500">*</span></Label>
                   <CatalogSelectWithCreate
                     companyId={companyId}
                     catalogKey="categories"
                     items={localCategories}
                     value={categoryId}
-                    onChange={setCategoryId}
+                    onChange={handleCategoryChange}
                     onItemCreated={(item) => setLocalCategories((prev) => [...prev, item])}
                     placeholder="Seleccionar categoría"
                     emptyLabel="— Sin categoría —"
@@ -1215,7 +1845,7 @@ export function ArticleFormDialog({
                 </div>
                 <div>
                   <Label htmlFor="code" className="text-xs flex items-center gap-1">
-                    Código de artículo (Maestro)
+                    Código de artículo (Maestro) <span className="text-red-500">*</span>
                     <span
                       className="inline-flex text-slate-400 cursor-help"
                       title="Este código identifica al modelo del producto y agrupa todas sus variantes."
@@ -1232,7 +1862,7 @@ export function ArticleFormDialog({
                   />
                 </div>
                 <div>
-                  <Label htmlFor="name" className="text-xs">Nombre base</Label>
+                  <Label htmlFor="name" className="text-xs">Nombre base <span className="text-red-500">*</span></Label>
                   <Input
                     id="name"
                     value={name}
@@ -1241,10 +1871,28 @@ export function ArticleFormDialog({
                     className="h-8 mt-0.5 w-full"
                   />
                 </div>
-                <div>
-                  <Label className="text-xs">IVA</Label>
-                  <Select value={taxId || "none"} onValueChange={(v) => setTaxId(v === "none" ? "" : v)}>
-                    <SelectTrigger className="h-8 mt-0.5">
+              </div>
+
+              {/* Fila 1: Próximo Secuencial (informativo) + IVA — misma fila, dos columnas */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 sm:gap-4 p-1">
+                {categoryId && categorySecuencialInfo && (
+                  <div>
+                    <Label className="text-xs text-slate-500">Próximo Secuencial Categoría (Código Maestro)</Label>
+                    <Input
+                      value={String(categorySecuencialInfo.secuencial)}
+                      readOnly
+                      aria-readonly="true"
+                      className="h-8 mt-0.5 w-full bg-slate-50 dark:bg-slate-900/50 font-mono text-sm border-slate-200 cursor-default"
+                    />
+                  </div>
+                )}
+                <div className={!(categoryId && categorySecuencialInfo) ? "md:col-start-2" : ""}>
+                  <Label className="text-xs">IVA <span className="text-red-500">*</span></Label>
+                  <Select
+                    value={taxId || "none"}
+                    onValueChange={(v) => handleTaxChange(v === "none" ? "" : v)}
+                  >
+                    <SelectTrigger className="h-8 mt-0.5 w-full">
                       <SelectValue placeholder="Seleccionar impuesto" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1256,7 +1904,9 @@ export function ArticleFormDialog({
                   </Select>
                 </div>
               </div>
-              <div>
+
+              {/* Fila 2: Observaciones — ancho completo */}
+              <div className="w-full p-1">
                 <Label htmlFor="observations" className="text-xs">Observaciones (artículo)</Label>
                 <Textarea
                   id="observations"
@@ -1264,48 +1914,173 @@ export function ArticleFormDialog({
                   onChange={(e) => setObservations(e.target.value)}
                   placeholder="Notas generales sobre el artículo..."
                   rows={2}
-                  className="mt-0.5 min-h-[4.5rem] text-sm"
+                  className="mt-0.5 min-h-[4.5rem] text-sm w-full"
                 />
+              </div>
+              </fieldset>
               </div>
             </TabsContent>
 
             <TabsContent value="variants" className="space-y-4 mt-4">
-              <div className="flex justify-between items-center mb-2">
-                <Label>Variantes</Label>
-                <Button type="button" variant="outline" size="sm" onClick={addVariant}>
+              <div className="flex justify-between items-center mb-2 flex-wrap gap-2">
+                <div className="flex items-center gap-4">
+                  <Label>Variantes</Label>
+                  {categoryId && categorySecuencialInfo && (
+                    <div className="flex items-center gap-2">
+                      <Label className="text-xs text-slate-500">Próximo Secuencial Variante (SKU / Barras):</Label>
+                      <span className="text-sm font-mono font-medium bg-slate-100 px-2 py-1 rounded">
+                        {categorySecuencialInfo.secuencialVariantes}
+                      </span>
+                    </div>
+                  )}
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={addVariant}
+                  disabled={!canAddVariant}
+                  title={
+                    !effectiveArticleId
+                      ? "Guarde primero el artículo en la pestaña General"
+                      : !canAddVariant
+                        ? "Guarde la variante actual antes de añadir otra"
+                        : undefined
+                  }
+                >
                   <Plus className="h-4 w-4 mr-1" />
                   Añadir variante
                 </Button>
               </div>
-              <div className="space-y-4">
-                {variants.map((v, i) => (
-                  <Card key={i} className="overflow-hidden">
-                    <CardHeader className="py-2.5 px-3 flex flex-row items-center justify-between space-y-0 bg-slate-50 border-b">
-                      <div>
-                        <CardTitle className="text-sm">Variante {i + 1}</CardTitle>
-                        <p className="text-xs text-slate-500 mt-0.5 font-normal">
-                          Código: <span className="font-medium text-slate-700">{code || "—"}</span>
-                          {" · "}
-                          Nombre: <span className="font-medium text-slate-700">{name || "—"}</span>
-                        </p>
-                      </div>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        disabled={variants.length <= 1}
-                        onClick={() => removeVariant(i)}
-                        className="text-red-500 hover:text-red-700"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </CardHeader>
+              <div className="space-y-2">
+                {variants.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/20 py-12 px-4 text-center">
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
+                      No hay variantes registradas
+                    </p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={addVariant}
+                      disabled={!canAddVariant}
+                      title={
+                        !effectiveArticleId
+                          ? "Guarde primero el artículo en la pestaña General"
+                          : undefined
+                      }
+                    >
+                      <Plus className="h-4 w-4 mr-1" />
+                      Añadir variante
+                    </Button>
+                  </div>
+                ) : (
+                variants.map((v, i) => {
+                  const isEditingThis = editingVariantIndex === i;
+                  const isExpanded = expandedVariantIndex === i;
+                  const canEditOther = editingVariantIndex == null;
+                  return (
+                  <Collapsible
+                    key={i}
+                    open={isExpanded}
+                    onOpenChange={(open) => {
+                      if (!open && isEditingThis) return;
+                      setExpandedVariantIndex(open ? i : null);
+                    }}
+                  >
+                    <Card className="overflow-hidden">
+                      <CardHeader className="py-2.5 px-3 flex flex-row items-center justify-between space-y-0 bg-slate-50 border-b">
+                        <CollapsibleTrigger asChild>
+                          <div className="flex-1 flex flex-col gap-0.5 cursor-pointer min-w-0">
+                            <CardTitle className="text-sm font-semibold text-slate-900">Variante {i + 1}</CardTitle>
+                            <p className="text-xs text-slate-500 mt-0.5 font-normal truncate">
+                              {[
+                                v.sku?.trim() || "—",
+                                code?.trim() || "",
+                                name?.trim() || "",
+                                v.measureId ? (localMeasures.find((m) => m.id === v.measureId)?.name ?? "") : "",
+                                v.colorId ? (localColors.find((c) => c.id === v.colorId)?.name ?? "") : "",
+                                v.sizeId ? (localSizes.find((s) => s.id === v.sizeId)?.name ?? "") : "",
+                                v.flavorId ? (localFlavors.find((f) => f.id === v.flavorId)?.name ?? "") : "",
+                                (() => {
+                                  const w = parseFloat(String(v.weight)) || 0;
+                                  return w > 0 ? String(roundToFive(w, 5)) : "";
+                                })(),
+                              ]
+                                .filter(Boolean)
+                                .join(" · ")}
+                            </p>
+                          </div>
+                        </CollapsibleTrigger>
+                        <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                          {isEditingThis ? (
+                            <>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                disabled={
+                                  !effectiveArticleId ||
+                                  (v.id ? !isVariantDirty(i) : !canSave) ||
+                                  !getVariantValidation(i).valid
+                                }
+                                onClick={() => saveSingleVariant(i)}
+                                title={
+                                  !effectiveArticleId
+                                    ? "Guarde primero el artículo en la pestaña General"
+                                    : !getVariantValidation(i).valid
+                                      ? getVariantValidation(i).message
+                                      : undefined
+                                }
+                                className="h-7 text-green-600 hover:text-green-700 hover:bg-green-50"
+                              >
+                                <Check className="h-4 w-4 mr-1" />
+                                Guardar
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={cancelEditVariant}
+                                className="h-7 text-slate-600 hover:text-slate-700"
+                              >
+                                <X className="h-4 w-4 mr-1" />
+                                Cancelar
+                              </Button>
+                            </>
+                          ) : (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              disabled={!canEditOther || !effectiveArticleId}
+                              onClick={() => startEditVariant(i)}
+                              title="Editar variante"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                          )}
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            disabled={variants.length === 0 || isEditingThis}
+                            onClick={() => removeVariant(i)}
+                            className="h-8 w-8 text-red-500 hover:text-red-700"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </CardHeader>
+                      <CollapsibleContent>
                     <CardContent className="p-3 space-y-3">
+                      <fieldset disabled={!isEditingThis} className="disabled:opacity-70 disabled:pointer-events-none [&_*]:disabled:pointer-events-none">
                       {/* Bloque principal: SKU, código barras, IVA (info), costo, medida y 5 tarifas PVP */}
                       <div className="space-y-3">
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
                           <div className="sm:col-span-2">
-                            <Label htmlFor={`sku-${i}`} className="text-xs">SKU</Label>
+                            <Label htmlFor={`sku-${i}`} className="text-xs">SKU <span className="text-red-500">*</span></Label>
                             <Input
                               id={`sku-${i}`}
                               value={v.sku}
@@ -1315,7 +2090,7 @@ export function ArticleFormDialog({
                             />
                           </div>
                           <div className="sm:col-span-2">
-                            <Label htmlFor={`barcode-${i}`} className="text-xs">Código de barras</Label>
+                            <Label htmlFor={`barcode-${i}`} className="text-xs">Código de barras <span className="text-red-500">*</span></Label>
                             <Input
                               id={`barcode-${i}`}
                               value={v.barcode}
@@ -1331,7 +2106,7 @@ export function ArticleFormDialog({
                             </p>
                           </div>
                           <div>
-                            <Label htmlFor={`cost-${i}`} className="text-xs">Precio de Costo SIN IVA</Label>
+                            <Label htmlFor={`cost-${i}`} className="text-xs">Precio de Costo SIN IVA <span className="text-red-500">*</span></Label>
                             <Input
                               id={`cost-${i}`}
                               type="number"
@@ -1352,7 +2127,7 @@ export function ArticleFormDialog({
                             />
                           </div>
                           <div>
-                            <Label htmlFor={`costIncIva-${i}`} className="text-xs">Precio de Costo INC. IVA</Label>
+                            <Label htmlFor={`costIncIva-${i}`} className="text-xs">Precio de Costo INC. IVA <span className="text-red-500">*</span></Label>
                             <Input
                               id={`costIncIva-${i}`}
                               type="number"
@@ -1373,7 +2148,7 @@ export function ArticleFormDialog({
                             />
                           </div>
                           <div>
-                            <Label htmlFor={`measure-${i}`} className="text-xs">Medida</Label>
+                            <Label htmlFor={`measure-${i}`} className="text-xs">Medida <span className="text-red-500">*</span></Label>
                             <CatalogSelectWithCreate
                               companyId={companyId}
                               catalogKey="measures"
@@ -1575,9 +2350,48 @@ export function ArticleFormDialog({
                           </div>
                         </div>
                       </div>
+                      {isEditingThis && (
+                        <div className="flex justify-end gap-2 pt-3 mt-3 border-t border-slate-200">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={
+                              !effectiveArticleId ||
+                              (v.id ? !isVariantDirty(i) : !canSave) ||
+                              !getVariantValidation(i).valid
+                            }
+                            onClick={() => saveSingleVariant(i)}
+                            title={
+                              !effectiveArticleId
+                                ? "Guarde primero el artículo en la pestaña General"
+                                : !getVariantValidation(i).valid
+                                  ? getVariantValidation(i).message
+                                  : undefined
+                            }
+                            className="h-8 text-green-600 border-green-200 hover:bg-green-50 hover:border-green-300"
+                          >
+                            <Check className="h-4 w-4 mr-1" />
+                            Guardar
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={cancelEditVariant}
+                            className="h-8 text-slate-600"
+                          >
+                            <X className="h-4 w-4 mr-1" />
+                            Cancelar
+                          </Button>
+                        </div>
+                      )}
+                      </fieldset>
                     </CardContent>
-                  </Card>
-                ))}
+                    </CollapsibleContent>
+                    </Card>
+                  </Collapsible>
+                );}) )}
               </div>
             </TabsContent>
 
@@ -1675,18 +2489,116 @@ export function ArticleFormDialog({
               )}
             </TabsContent>
 
-            <DialogFooter className="pt-4">
-              <Button type="button" variant="outline" onClick={() => setOpen(false)}>
-                Cancelar
-              </Button>
-              <Button type="submit" disabled={loading}>
-                {loading ? "Guardando..." : isEditing ? "Actualizar" : "Crear"}
+            {!canSave && validationMessage && (
+              <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2" role="status">
+                {validationMessage}
+              </p>
+            )}
+            <DialogFooter className="pt-4 flex-wrap gap-2">
+              {activeTab === "general" && (
+                <>
+                  {effectiveArticleId ? (
+                    <>
+                      {!generalTabEditMode ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => setGeneralTabEditMode(true)}
+                          disabled={loading}
+                        >
+                          <Pencil className="h-4 w-4 mr-1" />
+                          Editar
+                        </Button>
+                      ) : (
+                        <>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={cancelGeneralEdit}
+                            disabled={loading}
+                          >
+                            Cancelar
+                          </Button>
+                          <Button
+                            type="button"
+                            disabled={loading || !isGeneralDirty}
+                            onClick={saveGeneralArticleData}
+                          >
+                            {loading ? "Guardando..." : "Actualizar"}
+                          </Button>
+                        </>
+                      )}
+                    </>
+                  ) : (
+                    <Button
+                      type="button"
+                      disabled={loading || !canSaveGeneral}
+                      onClick={saveGeneralArticleData}
+                      title={!canSaveGeneral ? validationMessageGeneral : undefined}
+                    >
+                      {loading ? "Guardando..." : "Guardar"}
+                    </Button>
+                  )}
+                </>
+              )}
+              <Button type="button" variant="ghost" onClick={() => handleDialogOpenChange(false)}>
+                Salir
               </Button>
             </DialogFooter>
           </form>
         </Tabs>
       </DialogContent>
     </Dialog>
+
+    {/* Confirmación: cambios sin guardar (cambiar pestaña o cerrar) */}
+    <Dialog open={unsavedConfirmOpen} onOpenChange={setUnsavedConfirmOpen}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Cambios sin guardar</DialogTitle>
+          <DialogDescription>
+            {isVariantFormOpen
+              ? "Tienes cambios sin guardar en la variante. ¿Deseas continuar con la edición o descartar los cambios?"
+              : "Tienes cambios sin guardar. ¿Deseas descartarlos o continuar editando?"}
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter className="gap-2 sm:gap-0">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              setUnsavedConfirmOpen(false);
+              setPendingTab(null);
+            }}
+          >
+            {isVariantFormOpen ? "Continuar con la edición" : "Continuar editando"}
+          </Button>
+          <Button type="button" variant="destructive" onClick={discardChangesAndProceed}>
+            Descartar cambios
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    {/* Confirmación: Nuevo artículo con cambios sin guardar */}
+    <Dialog open={nuevoConfirmOpen} onOpenChange={setNuevoConfirmOpen}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Cambios sin guardar</DialogTitle>
+          <DialogDescription>
+            Tienes cambios sin guardar. ¿Deseas descartarlos para iniciar el registro de un nuevo artículo?
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter className="gap-2 sm:gap-0">
+          <Button type="button" variant="outline" onClick={() => setNuevoConfirmOpen(false)}>
+            Continuar editando
+          </Button>
+          <Button type="button" variant="destructive" onClick={confirmNuevoAndReset}>
+            Descartar e iniciar nuevo
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
 
@@ -1705,8 +2617,8 @@ function BatchForm({
   const [expirationDate, setExpirationDate] = useState("");
   const [currentStock, setCurrentStock] = useState("0");
 
-  function handleAdd(e: React.FormEvent) {
-    e.preventDefault();
+  function handleAdd(e?: React.SyntheticEvent) {
+    e?.preventDefault();
     onAdd(variantId, batchNumber, expirationDate, currentStock);
     setBatchNumber("");
     setExpirationDate("");
@@ -1715,7 +2627,7 @@ function BatchForm({
 
   return (
     <div className="space-y-3">
-      <form onSubmit={handleAdd} className="flex flex-wrap gap-2 items-end">
+      <div className="flex flex-wrap gap-2 items-end" role="group" aria-label="Añadir lote">
         <div>
           <Label className="text-xs">Nº Lote</Label>
           <Input
@@ -1723,6 +2635,7 @@ function BatchForm({
             onChange={(e) => setBatchNumber(e.target.value)}
             placeholder="LOTE-001"
             className="h-8 w-32"
+            onKeyDown={(e) => e.key === "Enter" && handleAdd(e)}
           />
         </div>
         <div>
@@ -1732,6 +2645,7 @@ function BatchForm({
             value={expirationDate}
             onChange={(e) => setExpirationDate(e.target.value)}
             className="h-8 w-36"
+            onKeyDown={(e) => e.key === "Enter" && handleAdd(e)}
           />
         </div>
         <div>
@@ -1743,10 +2657,11 @@ function BatchForm({
             value={currentStock}
             onChange={(e) => setCurrentStock(e.target.value)}
             className="h-8 w-24"
+            onKeyDown={(e) => e.key === "Enter" && handleAdd(e)}
           />
         </div>
-        <Button type="submit" size="sm">Añadir lote</Button>
-      </form>
+        <Button type="button" size="sm" onClick={() => handleAdd()}>Añadir lote</Button>
+      </div>
       <div className="rounded border overflow-hidden">
         <Table>
           <TableHeader>

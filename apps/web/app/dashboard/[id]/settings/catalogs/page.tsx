@@ -1,11 +1,13 @@
 "use client";
 
-import { useState, useEffect, use } from "react";
+import { useState, useEffect, useCallback, use } from "react";
 import { useRouter } from "next/navigation";
 import Cookies from "js-cookie";
 import { jwtDecode } from "jwt-decode";
 import { CatalogsContent } from "./catalogs-content";
-import { getBrandsClient, getCategoriesClient, getMeasuresClient, getColorsClient, getSizesClient, getFlavorsClient } from "@/lib/api-client";
+import { fetchCatalogStrict } from "@/lib/api-client";
+import { Button } from "@/components/ui/button";
+import { RefreshCw } from "lucide-react";
 
 export default function CatalogsSettingsPage({
   params,
@@ -14,6 +16,7 @@ export default function CatalogsSettingsPage({
 }) {
   const { id: companyId } = use(params);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [data, setData] = useState<{
     brands: { id: string; name: string }[];
     categories: { id: string; name: string }[];
@@ -30,6 +33,34 @@ export default function CatalogsSettingsPage({
     flavors: [],
   });
   const router = useRouter();
+
+  const loadData = useCallback(async () => {
+    setFetchError(null);
+    const fetchers = [
+      fetchCatalogStrict(companyId, "brands"),
+      fetchCatalogStrict(companyId, "categories"),
+      fetchCatalogStrict(companyId, "measures"),
+      fetchCatalogStrict(companyId, "colors"),
+      fetchCatalogStrict(companyId, "sizes"),
+      fetchCatalogStrict(companyId, "flavors"),
+    ];
+    const results = await Promise.allSettled(fetchers);
+    const keys = ["brands", "categories", "measures", "colors", "sizes", "flavors"] as const;
+    const next: Record<string, { id: string; name: string }[]> = {};
+    let hasRejection = false;
+    results.forEach((r, i) => {
+      if (r.status === "fulfilled") {
+        next[keys[i]] = Array.isArray(r.value) ? r.value : [];
+      } else {
+        next[keys[i]] = [];
+        hasRejection = true;
+      }
+    });
+    setData(next as typeof data);
+    if (hasRejection) {
+      setFetchError("Algunos catálogos no se pudieron cargar. Comprueba la conexión y vuelve a intentar.");
+    }
+  }, [companyId]);
 
   useEffect(() => {
     const token = Cookies.get("token");
@@ -50,65 +81,59 @@ export default function CatalogsSettingsPage({
     }
 
     let cancelled = false;
-    Promise.all([
-      getBrandsClient(companyId),
-      getCategoriesClient(companyId),
-      getMeasuresClient(companyId),
-      getColorsClient(companyId),
-      getSizesClient(companyId),
-      getFlavorsClient(companyId),
-    ]).then(([brands, categories, measures, colors, sizes, flavors]) => {
-      if (!cancelled) {
-        setData({
-          brands: Array.isArray(brands) ? brands : [],
-          categories: Array.isArray(categories) ? categories : [],
-          measures: Array.isArray(measures) ? measures : [],
-          colors: Array.isArray(colors) ? colors : [],
-          sizes: Array.isArray(sizes) ? sizes : [],
-          flavors: Array.isArray(flavors) ? flavors : [],
-        });
-      }
-    }).finally(() => {
+    loadData().finally(() => {
       if (!cancelled) setLoading(false);
     });
 
     return () => { cancelled = true; };
+    // loadData estable para companyId; omitir de deps evita "array size changed" en React
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [companyId, router]);
 
-  const refresh = () => {
-    Promise.all([
-      getBrandsClient(companyId),
-      getCategoriesClient(companyId),
-      getMeasuresClient(companyId),
-      getColorsClient(companyId),
-      getSizesClient(companyId),
-      getFlavorsClient(companyId),
-    ]).then(([brands, categories, measures, colors, sizes, flavors]) => {
-      setData({
-        brands: Array.isArray(brands) ? brands : [],
-        categories: Array.isArray(categories) ? categories : [],
-        measures: Array.isArray(measures) ? measures : [],
-        colors: Array.isArray(colors) ? colors : [],
-        sizes: Array.isArray(sizes) ? sizes : [],
-        flavors: Array.isArray(flavors) ? flavors : [],
-      });
-    });
+  const refresh = async () => {
+    setLoading(true);
+    setFetchError(null);
+    await loadData();
+    setLoading(false);
   };
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Catálogos de inventario</h1>
-        <p className="text-slate-500 text-sm mt-1">
-          Gestiona marcas, categorías, medidas, colores, tallas y sabores para usar en artículos.
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold">Catálogos de inventario</h1>
+          <p className="text-slate-500 text-sm mt-1">
+            Gestiona marcas, categorías, medidas, colores, tallas y sabores para usar en artículos.
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={refresh}
+          disabled={loading}
+        >
+          <RefreshCw className={`h-4 w-4 mr-1 ${loading ? "animate-spin" : ""}`} />
+          Refrescar
+        </Button>
       </div>
 
-      {loading ? (
+      {loading && !data.brands.length && !data.categories.length ? (
         <p className="text-slate-500 py-8">Cargando catálogos...</p>
-      ) : (
-        <CatalogsContent companyId={companyId} data={data} onRefresh={refresh} />
-      )}
+      ) : fetchError ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-800">
+          <p className="text-sm">{fetchError}</p>
+          <Button variant="outline" size="sm" className="mt-2" onClick={refresh}>
+            Reintentar
+          </Button>
+        </div>
+      ) : null}
+
+      <CatalogsContent
+        companyId={companyId}
+        data={data}
+        onRefresh={refresh}
+        loading={loading}
+      />
     </div>
   );
 }

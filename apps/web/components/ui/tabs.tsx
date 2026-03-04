@@ -17,14 +17,27 @@ function useTabs() {
 const Tabs = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement> & {
-    value: string;
-    onValueChange: (value: string) => void;
+    value?: string;
+    defaultValue?: string;
+    onValueChange?: (value: string) => void;
   }
->(({ value, onValueChange, className, ...props }, ref) => (
-  <TabsContext.Provider value={{ value, onValueChange }}>
-    <div ref={ref} className={cn("", className)} {...props} />
-  </TabsContext.Provider>
-));
+>(({ value: controlledValue, defaultValue, onValueChange, className, ...props }, ref) => {
+  const [internalValue, setInternalValue] = React.useState(defaultValue ?? "");
+  const value = controlledValue !== undefined ? controlledValue : internalValue;
+  const handleValueChange = React.useCallback(
+    (v: string) => {
+      if (controlledValue === undefined) setInternalValue(v);
+      onValueChange?.(v);
+    },
+    [controlledValue, onValueChange]
+  );
+
+  return (
+    <TabsContext.Provider value={{ value, onValueChange: handleValueChange }}>
+      <div ref={ref} className={cn("", className)} {...props} />
+    </TabsContext.Provider>
+  );
+});
 Tabs.displayName = "Tabs";
 
 const TabsList = React.forwardRef<

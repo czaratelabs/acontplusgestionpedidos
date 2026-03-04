@@ -20,7 +20,9 @@ import { ArticlesService } from './articles.service';
 import { BrandsService } from './brands.service';
 import { CategoriesService } from './categories.service';
 import { CreateArticleDto } from './dto/create-article.dto';
+import { CreateArticleVariantDto } from './dto/create-article.dto';
 import { UpdateArticleDto } from './dto/update-article.dto';
+import { SaveArticleGeneralDto } from './dto/save-article-general.dto';
 import { CreateBatchDto } from './dto/create-batch.dto';
 import { UpdateBatchDto } from './dto/update-batch.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -71,6 +73,18 @@ export class ArticlesController {
     return this.articlesService.create(companyId, dto);
   }
 
+  /**
+   * Guarda únicamente los datos generales del artículo (categoría, código, nombre, IVA, marca, observaciones).
+   * Creación o actualización sin variantes. Payload excluye variantes y campos de variante.
+   */
+  @Post('company/:companyId/general')
+  createGeneral(
+    @Param('companyId') companyId: string,
+    @Body() dto: SaveArticleGeneralDto,
+  ) {
+    return this.articlesService.saveArticleGeneral(companyId, null, dto);
+  }
+
   @Patch(':id')
   update(
     @Param('id') id: string,
@@ -78,6 +92,39 @@ export class ArticlesController {
     @Body() dto: UpdateArticleDto,
   ) {
     return this.articlesService.update(id, companyId ?? '', dto);
+  }
+
+  /**
+   * Actualiza únicamente los datos generales del artículo (pestaña General).
+   * No requiere ni procesa variantes.
+   */
+  @Patch(':id/general')
+  updateGeneral(
+    @Param('id') id: string,
+    @Query('companyId') companyId: string,
+    @Body() dto: SaveArticleGeneralDto,
+  ) {
+    return this.articlesService.saveArticleGeneral(companyId ?? '', id, dto);
+  }
+
+  /** Create a single variant (resource-based, per-item save). */
+  @Post(':articleId/variants')
+  createVariant(
+    @Param('articleId') articleId: string,
+    @Query('companyId') companyId: string,
+    @Body() dto: CreateArticleVariantDto,
+  ) {
+    return this.articlesService.createVariant(articleId, companyId ?? '', dto);
+  }
+
+  /** Update a single variant (resource-based, per-item save). */
+  @Patch('variants/:variantId')
+  updateVariant(
+    @Param('variantId') variantId: string,
+    @Query('companyId') companyId: string,
+    @Body() dto: Partial<CreateArticleVariantDto>,
+  ) {
+    return this.articlesService.updateVariant(variantId, companyId ?? '', dto);
   }
 
   @Delete(':id')

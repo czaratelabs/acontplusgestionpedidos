@@ -19,6 +19,18 @@ export class Category {
   @Column({ type: 'varchar' })
   name: string;
 
+  /** Siglas generadas del nombre: 1 palabra → 3 letras; 2+ palabras → 2 letras primera + 1 por resto. En mayúsculas. */
+  @Column({ type: 'varchar', length: 20, default: '' })
+  siglas: string;
+
+  /** Secuencial que incrementa al crear un artículo en esta categoría. Usado para código maestro. Editable. */
+  @Column({ type: 'int', default: 1 })
+  secuencial: number;
+
+  /** Secuencial que incrementa al crear una variante. Usado para SKU y código de barras. */
+  @Column({ name: 'secuencial_variantes', type: 'int', default: 1 })
+  secuencialVariantes: number;
+
   @Column({ name: 'company_id', type: 'uuid' })
   companyId: string;
 

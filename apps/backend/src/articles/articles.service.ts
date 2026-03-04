@@ -11,7 +11,9 @@ import { ArticleVariantPrice } from './entities/article-variant-price.entity';
 import { ArticleImage } from './entities/article-image.entity';
 import { ArticleVariantBatch } from './entities/article-variant-batch.entity';
 import { CreateArticleDto } from './dto/create-article.dto';
+import { CreateArticleVariantDto } from './dto/create-article.dto';
 import { UpdateArticleDto } from './dto/update-article.dto';
+import { SaveArticleGeneralDto } from './dto/save-article-general.dto';
 import { CreateBatchDto } from './dto/create-batch.dto';
 import { UpdateBatchDto } from './dto/update-batch.dto';
 import { CompaniesService } from '../companies/companies.service';
@@ -156,6 +158,74 @@ export class ArticlesService {
     return article;
   }
 
+  /**
+   * Guarda únicamente los datos generales del artículo (pestaña General).
+   * Creación o actualización parcial sin datos de variantes.
+   * Validación estricta: categoryId, code, name, taxId obligatorios.
+   */
+  async saveArticleGeneral(
+    companyId: string,
+    articleId: string | null,
+    dto: SaveArticleGeneralDto,
+  ): Promise<Article> {
+    const codeTrimmed = dto.code?.trim();
+    const nameTrimmed = dto.name?.trim();
+    if (!codeTrimmed) throw new ConflictException('El código maestro es obligatorio');
+    if (!nameTrimmed) throw new ConflictException('El nombre base es obligatorio');
+    if (!dto.categoryId) throw new ConflictException('La categoría es obligatoria');
+    if (!dto.taxId) throw new ConflictException('El IVA es obligatorio');
+
+    if (articleId) {
+      return this.updateArticleGeneral(articleId, companyId, dto);
+    }
+    return this.createArticleGeneral(companyId, dto);
+  }
+
+  private async createArticleGeneral(
+    companyId: string,
+    dto: SaveArticleGeneralDto,
+  ): Promise<Article> {
+    await this.companiesService.assertResourceLimit(companyId, 'max_inventory_items', 'artículos');
+    const codeTrimmed = dto.code.trim();
+    const existingCode = await this.articleRepo.findOne({ where: { companyId, code: codeTrimmed } });
+    if (existingCode) {
+      throw new ConflictException('Ya existe un artículo con ese código en esta empresa');
+    }
+    const article = this.articleRepo.create({
+      code: codeTrimmed,
+      name: dto.name.trim(),
+      brandId: dto.brandId || null,
+      categoryId: dto.categoryId,
+      taxId: dto.taxId,
+      companyId,
+      observations: dto.observations?.trim() || null,
+    });
+    const saved = await this.articleRepo.save(article);
+    return this.findOne(saved.id);
+  }
+
+  private async updateArticleGeneral(
+    id: string,
+    companyId: string,
+    dto: SaveArticleGeneralDto,
+  ): Promise<Article> {
+    const article = await this.articleRepo.findOne({ where: { id, companyId } });
+    if (!article) throw new NotFoundException('Artículo no encontrado');
+    const codeTrimmed = dto.code.trim();
+    const existingCode = await this.articleRepo.findOne({ where: { companyId, code: codeTrimmed } });
+    if (existingCode && existingCode.id !== id) {
+      throw new ConflictException('Ya existe un artículo con ese código en esta empresa');
+    }
+    article.code = codeTrimmed;
+    article.name = dto.name.trim();
+    article.brandId = dto.brandId || null;
+    article.categoryId = dto.categoryId;
+    article.taxId = dto.taxId;
+    article.observations = dto.observations?.trim() || null;
+    await this.articleRepo.save(article);
+    return this.findOne(id);
+  }
+
   async create(companyId: string, dto: CreateArticleDto): Promise<Article> {
     await this.companiesService.assertResourceLimit(companyId, 'max_inventory_items', 'artículos');
 
@@ -181,42 +251,7 @@ export class ArticlesService {
     });
     const saved = await this.articleRepo.save(article);
 
-    const variantsToCreate = dto.variants?.filter((v) => v?.sku?.trim()) ?? [];
-    for (const vdto of variantsToCreate) {
-      const variant = this.variantRepo.create({
-        articleId: saved.id,
-        companyId,
-        articleCode: codeTrimmed,
-        sku: vdto.sku.trim(),
-        barcode: vdto.barcode?.trim() || null,
-        cost: vdto.cost ?? 0,
-        colorId: vdto.colorId || null,
-        sizeId: vdto.sizeId || null,
-        flavorId: vdto.flavorId || null,
-        measureId: vdto.measureId || null,
-        stockActual: vdto.stockActual ?? 0,
-        stockMin: vdto.stockMin ?? 0,
-        weight: vdto.weight ?? 0,
-        observations: vdto.observations?.trim() || null,
-      });
-      const savedV = await this.variantRepo.save(variant);
-
-      const pdto = vdto.prices;
-      const price = this.priceRepo.create({
-        articleVariantId: savedV.id,
-        precioVenta1: pdto?.precioVenta1 ?? 0,
-        precioVenta2: pdto?.precioVenta2 ?? 0,
-        precioVenta3: pdto?.precioVenta3 ?? 0,
-        precioVenta4: pdto?.precioVenta4 ?? 0,
-        precioVenta5: pdto?.precioVenta5 ?? 0,
-        pvp1: pdto?.pvp1 ?? 0,
-        pvp2: pdto?.pvp2 ?? 0,
-        pvp3: pdto?.pvp3 ?? 0,
-        pvp4: pdto?.pvp4 ?? 0,
-        pvp5: pdto?.pvp5 ?? 0,
-      });
-      await this.priceRepo.save(price);
-    }
+    /** General tab only: no variant data in create. Variants are created per-item via POST /articles/:articleId/variants. */
 
     return this.findOne(saved.id);
   }
@@ -335,6 +370,117 @@ export class ArticlesService {
     }
 
     return this.findOne(id);
+  }
+
+  /**
+   * Crea una variante individual (POST /articles/:articleId/variants).
+   * Solo maneja sku, barcode, cost, measureId, articleId y atributos opcionales.
+   */
+  async createVariant(
+    articleId: string,
+    companyId: string,
+    dto: CreateArticleVariantDto,
+  ): Promise<Article> {
+    const article = await this.articleRepo.findOne({ where: { id: articleId, companyId } });
+    if (!article) throw new NotFoundException('Artículo no encontrado');
+
+    const skuTrimmed = dto.sku?.trim();
+    if (!skuTrimmed) throw new ConflictException('El SKU es obligatorio');
+
+    const existingSku = await this.variantRepo.findOne({
+      where: { companyId, sku: skuTrimmed },
+    });
+    if (existingSku) throw new ConflictException('Ya existe una variante con ese SKU en esta empresa');
+
+    const variant = this.variantRepo.create({
+      articleId,
+      companyId,
+      articleCode: article.code || null,
+      sku: skuTrimmed,
+      barcode: dto.barcode?.trim() || null,
+      cost: dto.cost ?? 0,
+      colorId: dto.colorId || null,
+      sizeId: dto.sizeId || null,
+      flavorId: dto.flavorId || null,
+      measureId: dto.measureId || null,
+      stockActual: dto.stockActual ?? 0,
+      stockMin: dto.stockMin ?? 0,
+      weight: dto.weight ?? 0,
+      observations: dto.observations?.trim() || null,
+    });
+    const savedV = await this.variantRepo.save(variant);
+
+    const pdto = dto.prices;
+    const price = this.priceRepo.create({
+      articleVariantId: savedV.id,
+      precioVenta1: pdto?.precioVenta1 ?? 0,
+      precioVenta2: pdto?.precioVenta2 ?? 0,
+      precioVenta3: pdto?.precioVenta3 ?? 0,
+      precioVenta4: pdto?.precioVenta4 ?? 0,
+      precioVenta5: pdto?.precioVenta5 ?? 0,
+      pvp1: pdto?.pvp1 ?? 0,
+      pvp2: pdto?.pvp2 ?? 0,
+      pvp3: pdto?.pvp3 ?? 0,
+      pvp4: pdto?.pvp4 ?? 0,
+      pvp5: pdto?.pvp5 ?? 0,
+    });
+    await this.priceRepo.save(price);
+
+    return this.findOne(articleId);
+  }
+
+  /**
+   * Actualiza una variante individual (PATCH /articles/variants/:variantId).
+   */
+  async updateVariant(
+    variantId: string,
+    companyId: string,
+    dto: Partial<CreateArticleVariantDto>,
+  ): Promise<Article> {
+    const variant = await this.variantRepo.findOne({ where: { id: variantId, companyId }, relations: ['article'] });
+    if (!variant) throw new NotFoundException('Variante no encontrada');
+
+    if (dto.sku != null && dto.sku.trim()) {
+      const skuTrimmed = dto.sku.trim();
+      const existingSku = await this.variantRepo.findOne({ where: { companyId, sku: skuTrimmed } });
+      if (existingSku && existingSku.id !== variantId) {
+        throw new ConflictException('Ya existe una variante con ese SKU en esta empresa');
+      }
+      variant.sku = skuTrimmed;
+    }
+    if (dto.barcode !== undefined) variant.barcode = dto.barcode?.trim() || null;
+    if (dto.cost != null) variant.cost = dto.cost;
+    if (dto.colorId !== undefined) variant.colorId = dto.colorId || null;
+    if (dto.sizeId !== undefined) variant.sizeId = dto.sizeId || null;
+    if (dto.flavorId !== undefined) variant.flavorId = dto.flavorId || null;
+    if (dto.measureId !== undefined) variant.measureId = dto.measureId || null;
+    if (dto.stockActual != null) variant.stockActual = dto.stockActual;
+    if (dto.stockMin != null) variant.stockMin = dto.stockMin;
+    if (dto.weight != null) variant.weight = dto.weight;
+    if (dto.observations !== undefined) variant.observations = dto.observations?.trim() || null;
+    if (variant.article?.code) variant.articleCode = variant.article.code;
+
+    await this.variantRepo.save(variant);
+
+    const pdto = dto.prices;
+    if (pdto) {
+      const existingPrice = await this.priceRepo.findOne({ where: { articleVariantId: variantId } });
+      if (existingPrice) {
+        if (pdto.precioVenta1 != null) existingPrice.precioVenta1 = pdto.precioVenta1;
+        if (pdto.precioVenta2 != null) existingPrice.precioVenta2 = pdto.precioVenta2;
+        if (pdto.precioVenta3 != null) existingPrice.precioVenta3 = pdto.precioVenta3;
+        if (pdto.precioVenta4 != null) existingPrice.precioVenta4 = pdto.precioVenta4;
+        if (pdto.precioVenta5 != null) existingPrice.precioVenta5 = pdto.precioVenta5;
+        if (pdto.pvp1 != null) existingPrice.pvp1 = pdto.pvp1;
+        if (pdto.pvp2 != null) existingPrice.pvp2 = pdto.pvp2;
+        if (pdto.pvp3 != null) existingPrice.pvp3 = pdto.pvp3;
+        if (pdto.pvp4 != null) existingPrice.pvp4 = pdto.pvp4;
+        if (pdto.pvp5 != null) existingPrice.pvp5 = pdto.pvp5;
+        await this.priceRepo.save(existingPrice);
+      }
+    }
+
+    return this.findOne(variant.articleId);
   }
 
   /**

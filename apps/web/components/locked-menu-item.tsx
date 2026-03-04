@@ -46,7 +46,7 @@ export function LockedMenuItem({
               <Lock className="h-5 w-5 text-amber-500" />
               No disponible en tu plan actual
             </DialogTitle>
-            <DialogDescription asChild>
+            <DialogDescription>
               <div className="space-y-3 pt-2 text-left text-sm text-muted-foreground">
                 <p>
                   {moduleName === "este módulo"

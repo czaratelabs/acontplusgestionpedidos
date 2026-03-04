@@ -96,6 +96,7 @@ type ArticlesTableProps = {
 export function ArticlesTable({ companyId, articles, brands, categories, taxes, measures = [], colors = [], sizes = [], flavors = [] }: ArticlesTableProps) {
   const [articleToDelete, setArticleToDelete] = useState<Article | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [articleFormOpen, setArticleFormOpen] = useState(false);
   const [editingArticle, setEditingArticle] = useState<Article | null>(null);
   const router = useRouter();
   const { toast } = useToast();
@@ -203,7 +204,10 @@ export function ArticlesTable({ companyId, articles, brands, categories, taxes, 
                         variant="outline"
                         size="icon"
                         className="h-8 w-8"
-                        onClick={() => setEditingArticle(a)}
+                        onClick={() => {
+                          setEditingArticle(a);
+                          setArticleFormOpen(true);
+                        }}
                       >
                         <Pencil className="h-4 w-4" />
                       </Button>
@@ -249,7 +253,7 @@ export function ArticlesTable({ companyId, articles, brands, categories, taxes, 
         </DialogContent>
       </Dialog>
 
-      {editingArticle && (
+      {articleFormOpen && (
         <ArticleFormDialog
           companyId={companyId}
           brands={brands}
@@ -259,8 +263,14 @@ export function ArticlesTable({ companyId, articles, brands, categories, taxes, 
           colors={colors}
           sizes={sizes}
           flavors={flavors}
-          open={!!editingArticle}
-          onOpenChange={(open) => !open && setEditingArticle(null)}
+          open={articleFormOpen}
+          onOpenChange={(open) => {
+            if (!open) {
+              setArticleFormOpen(false);
+              setEditingArticle(null);
+            }
+          }}
+          onRequestNew={() => setEditingArticle(null)}
           initialData={editingArticle}
         />
       )}

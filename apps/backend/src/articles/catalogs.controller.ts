@@ -65,12 +65,21 @@ export class CatalogsController {
     return this.categoriesService.findByCompany(companyId);
   }
 
+  @Get('company/:companyId/categories/:id')
+  getCategory(
+    @Param('companyId') companyId: string,
+    @Param('id') id: string,
+  ) {
+    return this.categoriesService.findOne(id);
+  }
+
   @Post('company/:companyId/categories')
   createCategory(
     @Param('companyId') companyId: string,
     @Body('name') name: string,
+    @Body('siglas') siglas?: string,
   ) {
-    return this.categoriesService.create(companyId, name ?? '');
+    return this.categoriesService.create(companyId, name ?? '', siglas);
   }
 
   @Patch('company/:companyId/categories/:id')
@@ -78,8 +87,10 @@ export class CatalogsController {
     @Param('companyId') companyId: string,
     @Param('id') id: string,
     @Body('name') name: string,
+    @Body('siglas') siglas?: string,
+    @Body('secuencial') secuencial?: number,
   ) {
-    return this.categoriesService.update(id, companyId, name ?? '');
+    return this.categoriesService.update(id, companyId, name ?? '', siglas, secuencial);
   }
 
   @Delete('company/:companyId/categories/:id')

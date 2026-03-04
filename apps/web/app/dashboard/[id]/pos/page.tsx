@@ -134,9 +134,9 @@ export default function POSPage({ params }: { params: Promise<{ id: string }> })
                     </div>
                     <div className="text-right tabular-nums">
                       <div className="font-medium">
-                        €{(v.prices?.[0]?.precioVenta1 ?? v.prices?.[0]?.precioVenta2 ?? 0).toFixed(2)}
+                        €{Number(v.prices?.[0]?.precioVenta1 ?? v.prices?.[0]?.precioVenta2 ?? 0).toFixed(2)}
                       </div>
-                      <div className="text-xs text-slate-500">PVP €{(v.prices?.[0]?.pvp1 ?? 0).toFixed(2)}</div>
+                      <div className="text-xs text-slate-500">PVP €{Number(v.prices?.[0]?.pvp1 ?? 0).toFixed(2)}</div>
                     </div>
                   </li>
                 ))}
