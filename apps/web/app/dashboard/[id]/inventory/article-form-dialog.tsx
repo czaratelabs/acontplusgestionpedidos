@@ -137,10 +137,14 @@ type Batch = {
   currentStock: number;
 };
 
+type AdditionalBarcode = { barcode: string; description: string };
+
 type VariantRow = {
   id?: string;
   sku: string;
   barcode: string;
+  /** Códigos de barras adicionales (opcional descripción, ej. "Strawberry Flavor") */
+  additionalBarcodes: AdditionalBarcode[];
   cost: string;
   /** Valor mostrado para INC IVA; si no está definido se deriva de cost. Sincronizado bidireccionalmente con cost. */
   costIncIva?: string;
@@ -156,6 +160,7 @@ type VariantRow = {
 const emptyVariant = (): VariantRow => ({
   sku: "",
   barcode: "",
+  additionalBarcodes: [],
   cost: "0",
   colorId: "",
   sizeId: "",
@@ -234,6 +239,7 @@ type ArticleFormDialogProps = {
       id: string;
       sku: string;
       barcode?: string | null;
+      barcodes?: Array<{ barcode: string; description?: string | null }>;
       cost: number;
       colorId?: string | null;
       sizeId?: string | null;
@@ -325,6 +331,13 @@ export function ArticleFormDialog({
   } | null>(null);
   const [expandedVariantIndex, setExpandedVariantIndex] = useState<number | null>(null);
   const [originalVariantSnapshot, setOriginalVariantSnapshot] = useState<VariantRow | null>(null);
+  /** Input value for "add additional barcode" per variant index. */
+  const [additionalBarcodeInputByIndex, setAdditionalBarcodeInputByIndex] = useState<Record<number, string>>({});
+  /** When set, the tag at (variantIndex, barcodeIndex) is in "edit description" mode. */
+  const [editingBarcodeDescription, setEditingBarcodeDescription] = useState<{
+    variantIndex: number;
+    barcodeIndex: number;
+  } | null>(null);
   const [tariffLabels, setTariffLabels] = useState<Record<string, string>>({ ...DEFAULT_TARIFF_LABELS });
   const [profitabilityConfig, setProfitabilityConfig] = useState<{
     defaultPercentages: Record<string, number>;
@@ -486,9 +499,13 @@ export function ArticleFormDialog({
     const vr = variants[index];
     if (!vr) return null;
     const p = vr.prices;
+    const barcodes = (vr.additionalBarcodes ?? [])
+      .filter((b) => (b.barcode ?? "").trim() !== "")
+      .map((b) => ({ barcode: b.barcode.trim(), description: (b.description ?? "").trim() || undefined }));
     return {
       sku: vr.sku.trim(),
       barcode: vr.barcode?.trim() || null,
+      barcodes: barcodes.length > 0 ? barcodes : undefined,
       cost: parseFloat(vr.cost) || 0,
       colorId: vr.colorId?.trim() || null,
       sizeId: vr.sizeId?.trim() || null,
@@ -547,10 +564,15 @@ export function ArticleFormDialog({
         rentabilidadIncIva5: "0",
       };
       const prices = recalculateRentabilidadFromPrices(costNum, ivaPct, pricesBase);
+      const barcodesRaw = vr.barcodes as Array<{ barcode?: string; description?: string | null }> | undefined;
+      const additionalBarcodes: AdditionalBarcode[] = Array.isArray(barcodesRaw)
+        ? barcodesRaw.map((b) => ({ barcode: String(b.barcode ?? ""), description: String(b.description ?? "") }))
+        : [];
       return {
         id: vr.id as string,
         sku: String(vr.sku ?? ""),
         barcode: String(vr.barcode ?? ""),
+        additionalBarcodes,
         cost: formatDecimal(vr.cost ?? 0),
         colorId: String(vr.colorId ?? ""),
         sizeId: String(vr.sizeId ?? ""),
@@ -849,10 +871,16 @@ export function ArticleFormDialog({
                   rentabilidadIncIva5: "0",
                 };
                 const prices = recalculateRentabilidadFromPrices(costNum, ivaPct, pricesBase);
+                const barcodesRaw = v.barcodes ?? [];
+                const additionalBarcodes: AdditionalBarcode[] = barcodesRaw.map((b) => ({
+                  barcode: b.barcode ?? "",
+                  description: b.description ?? "",
+                }));
                 return {
                   id: v.id,
                   sku: v.sku,
                   barcode: v.barcode ?? "",
+                  additionalBarcodes,
                   cost: formatDecimal(v.cost ?? 0),
                   colorId: v.colorId ?? v.color?.id ?? "",
                   sizeId: v.sizeId ?? v.size?.id ?? "",
@@ -893,6 +921,8 @@ export function ArticleFormDialog({
         setImages([]);
         setVariantsWithBatches([]);
         setVariants([]);
+        setAdditionalBarcodeInputByIndex({});
+        setEditingBarcodeDescription(null);
       }
     }
   }, [open, initialData]);
@@ -1030,9 +1060,26 @@ export function ArticleFormDialog({
   function removeVariant(index: number) {
     if (variants.length <= 0) return;
     setVariants((prev) => prev.filter((_, i) => i !== index));
+    setAdditionalBarcodeInputByIndex((prev) => {
+      const next: Record<number, string> = {};
+      const newLen = variants.length - 1;
+      for (let newIdx = 0; newIdx < newLen; newIdx++) {
+        const oldIdx = newIdx >= index ? newIdx + 1 : newIdx;
+        if (prev[oldIdx] !== undefined && prev[oldIdx] !== "") next[newIdx] = prev[oldIdx];
+      }
+      return next;
+    });
+    if (editingBarcodeDescription?.variantIndex === index) setEditingBarcodeDescription(null);
+    else if (editingBarcodeDescription && editingBarcodeDescription.variantIndex > index) {
+      setEditingBarcodeDescription((prev) => prev ? { ...prev, variantIndex: prev.variantIndex - 1 } : null);
+    }
   }
 
-  function updateVariant(index: number, field: keyof VariantRow, value: string | VariantRow["prices"]) {
+  function updateVariant(
+    index: number,
+    field: keyof VariantRow,
+    value: string | VariantRow["prices"] | AdditionalBarcode[],
+  ) {
     setVariants((prev) => {
       const next = [...prev];
       (next[index] as Record<string, unknown>)[field] = value;
@@ -1081,6 +1128,78 @@ export function ArticleFormDialog({
       (next[variantIndex].prices as Record<string, string>)[field] = value;
       return next;
     });
+  }
+
+  /** Comprueba si un código de barras está disponible (no usado por otra variante/artículo). */
+  async function checkBarcodeAvailable(
+    barcode: string,
+    excludeVariantId?: string | null,
+  ): Promise<boolean> {
+    const trimmed = barcode?.trim();
+    if (!trimmed) return false;
+    try {
+      const params = new URLSearchParams({ barcode: trimmed });
+      if (excludeVariantId) params.set("excludeVariantId", excludeVariantId);
+      const res = await fetch(
+        `${API_BASE}/articles/company/${companyId}/check-barcode?${params.toString()}`,
+        { credentials: "include" },
+      );
+      if (!res.ok) return false;
+      const data = (await res.json()) as { available?: boolean };
+      return data.available === true;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Añade un código de barras adicional a la variante tras comprobar unicidad. */
+  async function addAdditionalBarcode(variantIndex: number) {
+    const input = (additionalBarcodeInputByIndex[variantIndex] ?? "").trim();
+    if (!input) return;
+    const v = variants[variantIndex];
+    if (!v) return;
+    const alreadyInList = (v.additionalBarcodes ?? []).some(
+      (b) => b.barcode.trim().toLowerCase() === input.toLowerCase(),
+    );
+    if (alreadyInList) {
+      toast({ title: "Código duplicado", description: "Ese código ya está en la lista de esta variante.", variant: "destructive" });
+      return;
+    }
+    const excludeVariantId = v.id ?? undefined;
+    const available = await checkBarcodeAvailable(input, excludeVariantId);
+    if (!available) {
+      toast({
+        title: "Código no disponible",
+        description: "Ese código de barras ya está asignado a otro artículo o variante.",
+        variant: "destructive",
+      });
+      return;
+    }
+    const newList: AdditionalBarcode[] = [...(v.additionalBarcodes ?? []), { barcode: input, description: "" }];
+    updateVariant(variantIndex, "additionalBarcodes", newList);
+    setAdditionalBarcodeInputByIndex((prev) => ({ ...prev, [variantIndex]: "" }));
+  }
+
+  /** Elimina un código de barras adicional. */
+  function removeAdditionalBarcode(variantIndex: number, barcodeIndex: number) {
+    const v = variants[variantIndex];
+    if (!v) return;
+    const list = [...(v.additionalBarcodes ?? [])];
+    list.splice(barcodeIndex, 1);
+    updateVariant(variantIndex, "additionalBarcodes", list);
+    if (editingBarcodeDescription?.variantIndex === variantIndex && editingBarcodeDescription?.barcodeIndex === barcodeIndex) {
+      setEditingBarcodeDescription(null);
+    }
+  }
+
+  /** Actualiza la descripción de un código de barras adicional. */
+  function updateAdditionalBarcodeDescription(variantIndex: number, barcodeIndex: number, description: string) {
+    const v = variants[variantIndex];
+    if (!v) return;
+    const list = [...(v.additionalBarcodes ?? [])];
+    if (list[barcodeIndex]) list[barcodeIndex] = { ...list[barcodeIndex], description };
+    updateVariant(variantIndex, "additionalBarcodes", list);
+    setEditingBarcodeDescription(null);
   }
 
   /**
@@ -2067,7 +2186,7 @@ export function ArticleFormDialog({
                             />
                           </div>
                           <div className="sm:col-span-2">
-                            <Label htmlFor={`barcode-${i}`} className="text-xs">Código de barras <span className="text-red-500">*</span></Label>
+                            <Label htmlFor={`barcode-${i}`} className="text-xs">Código de barras principal <span className="text-red-500">*</span></Label>
                             <Input
                               id={`barcode-${i}`}
                               value={v.barcode}
@@ -2075,6 +2194,65 @@ export function ArticleFormDialog({
                               placeholder="Ej: 7891234567890"
                               className="h-8 mt-0.5 min-w-[140px]"
                             />
+                          </div>
+                          <div className="sm:col-span-full">
+                            <Label className="text-xs text-slate-600">Códigos de barras adicionales</Label>
+                            <p className="text-[11px] text-slate-500 mt-0.5 mb-1">Escriba o escanee un código y pulse Enter para añadir. Clic en un tag para editar la descripción.</p>
+                            <div className="flex flex-wrap items-center gap-1.5 mt-1 min-h-[2rem] p-2 rounded-md border bg-slate-50/50 dark:bg-slate-900/30">
+                              {(v.additionalBarcodes ?? []).map((ab, j) => (
+                                <span key={`${i}-${j}-${ab.barcode}`} className="inline-flex items-center gap-1 rounded-md bg-slate-200 dark:bg-slate-700 px-2 py-0.5 text-xs">
+                                  {editingBarcodeDescription?.variantIndex === i && editingBarcodeDescription?.barcodeIndex === j ? (
+                                    <input
+                                      type="text"
+                                      className="h-6 w-32 rounded border bg-white dark:bg-slate-800 px-1.5 text-xs"
+                                      placeholder="Descripción (opcional)"
+                                      value={ab.description}
+                                      onChange={(e) => {
+                                        const list = [...(v.additionalBarcodes ?? [])];
+                                        if (list[j]) list[j] = { ...list[j], description: e.target.value };
+                                        updateVariant(i, "additionalBarcodes", list);
+                                      }}
+                                      onBlur={() => setEditingBarcodeDescription(null)}
+                                      onKeyDown={(e) => {
+                                        if (e.key === "Enter") updateAdditionalBarcodeDescription(i, j, (v.additionalBarcodes ?? [])[j]?.description ?? "");
+                                        if (e.key === "Escape") setEditingBarcodeDescription(null);
+                                      }}
+                                      autoFocus
+                                    />
+                                  ) : (
+                                    <>
+                                      <span
+                                        className="cursor-pointer hover:underline"
+                                        onClick={() => setEditingBarcodeDescription({ variantIndex: i, barcodeIndex: j })}
+                                        title="Clic para editar descripción"
+                                      >
+                                        {ab.description?.trim() ? `${ab.barcode} - ${ab.description}` : ab.barcode}
+                                      </span>
+                                      <button
+                                        type="button"
+                                        className="rounded p-0.5 hover:bg-slate-400 dark:hover:bg-slate-600"
+                                        onClick={() => removeAdditionalBarcode(i, j)}
+                                        aria-label="Quitar código"
+                                      >
+                                        <X className="h-3 w-3" />
+                                      </button>
+                                    </>
+                                  )}
+                                </span>
+                              ))}
+                              <Input
+                                className="h-7 w-36 min-w-[8rem] text-xs inline-flex"
+                                placeholder="Código + Enter"
+                                value={additionalBarcodeInputByIndex[i] ?? ""}
+                                onChange={(e) => setAdditionalBarcodeInputByIndex((prev) => ({ ...prev, [i]: e.target.value }))}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") {
+                                    e.preventDefault();
+                                    void addAdditionalBarcode(i);
+                                  }
+                                }}
+                              />
+                            </div>
                           </div>
                           <div>
                             <Label className="text-xs text-slate-500">IVA (informativo)</Label>

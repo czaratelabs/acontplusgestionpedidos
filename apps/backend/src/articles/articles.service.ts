@@ -10,6 +10,7 @@ import { ArticleVariant } from './entities/article-variant.entity';
 import { ArticleVariantPrice } from './entities/article-variant-price.entity';
 import { ArticleImage } from './entities/article-image.entity';
 import { ArticleVariantBatch } from './entities/article-variant-batch.entity';
+import { ArticleVariantBarcode } from './entities/article-variant-barcode.entity';
 import { CreateArticleDto } from './dto/create-article.dto';
 import { CreateArticleVariantDto } from './dto/create-article.dto';
 import { UpdateArticleDto } from './dto/update-article.dto';
@@ -31,8 +32,35 @@ export class ArticlesService {
     private readonly imageRepo: Repository<ArticleImage>,
     @InjectRepository(ArticleVariantBatch)
     private readonly batchRepo: Repository<ArticleVariantBatch>,
+    @InjectRepository(ArticleVariantBarcode)
+    private readonly barcodeRepo: Repository<ArticleVariantBarcode>,
     private readonly companiesService: CompaniesService,
   ) {}
+
+  /**
+   * Check if a barcode is available (not used by another variant or in additional barcodes).
+   * Master barcode and article_variant_barcodes are checked company-wide.
+   */
+  async isBarcodeAvailable(
+    companyId: string,
+    barcode: string,
+    excludeVariantId?: string,
+  ): Promise<boolean> {
+    const trimmed = (barcode ?? '').trim();
+    if (!trimmed) return false;
+    const onVariant = await this.variantRepo.findOne({
+      where: { companyId, barcode: trimmed },
+    });
+    if (onVariant && onVariant.id !== excludeVariantId) return false;
+    const onExtra = await this.barcodeRepo
+      .createQueryBuilder('b')
+      .innerJoin('b.articleVariant', 'v')
+      .where('v.company_id = :companyId', { companyId })
+      .andWhere('LOWER(b.barcode) = LOWER(:barcode)', { barcode: trimmed })
+      .getOne();
+    if (onExtra && onExtra.articleVariantId !== excludeVariantId) return false;
+    return true;
+  }
 
   /**
    * Búsqueda combinada:
@@ -47,17 +75,20 @@ export class ArticlesService {
       .createQueryBuilder('v')
       .leftJoinAndSelect('v.article', 'a')
       .leftJoinAndSelect('v.prices', 'p')
+      .leftJoinAndSelect('v.barcodes', 'vb')
       .leftJoinAndSelect('v.color', 'vcolor')
       .leftJoinAndSelect('v.size', 'vsize')
       .leftJoinAndSelect('v.flavor', 'vflavor')
       .leftJoinAndSelect('a.brand', 'b')
       .leftJoinAndSelect('a.category', 'c')
       .leftJoinAndSelect('a.tax', 't')
+      .leftJoin('v.barcodes', 'vb_match')
       .where('v.company_id = :companyId', { companyId })
       .andWhere('v.is_active = true')
       .andWhere(
         new Brackets((qb) => {
           qb.where('LOWER(v.barcode) = LOWER(:q)', { q: trimmed })
+            .orWhere('LOWER(vb_match.barcode) = LOWER(:q)', { q: trimmed })
             .orWhere('LOWER(v.sku) = LOWER(:q)', { q: trimmed })
             .orWhere('LOWER(a.code) = LOWER(:q)', { q: trimmed })
             .orWhere("a.search_vector @@ plainto_tsquery('spanish', :q)", { q: trimmed });
@@ -81,6 +112,7 @@ export class ArticlesService {
         .createQueryBuilder('v')
         .leftJoinAndSelect('v.article', 'a')
         .leftJoinAndSelect('v.prices', 'p')
+        .leftJoinAndSelect('v.barcodes', 'vb')
         .leftJoinAndSelect('v.color', 'vcolor')
         .leftJoinAndSelect('v.size', 'vsize')
         .leftJoinAndSelect('v.flavor', 'vflavor')
@@ -96,13 +128,14 @@ export class ArticlesService {
       .getMany();
     if (byCode.length > 0) return byCode;
 
-    const byBarcodeOrSku = await baseQb()
+    const byBarcodeOrSkuQb = baseQb();
+    const byBarcodeOrSku = await byBarcodeOrSkuQb
+      .leftJoin('v.barcodes', 'vb_match')
       .andWhere(
         new Brackets((qb) => {
-          qb.where('LOWER(v.barcode) = LOWER(:q)', { q: trimmed }).orWhere(
-            'LOWER(v.sku) = LOWER(:q)',
-            { q: trimmed },
-          );
+          qb.where('LOWER(v.barcode) = LOWER(:q)', { q: trimmed })
+            .orWhere('LOWER(vb_match.barcode) = LOWER(:q)', { q: trimmed })
+            .orWhere('LOWER(v.sku) = LOWER(:q)', { q: trimmed });
         }),
       )
       .getOne();
@@ -119,7 +152,7 @@ export class ArticlesService {
   async findAll(companyId: string): Promise<Article[]> {
     const articles = await this.articleRepo.find({
       where: { companyId },
-      relations: ['brand', 'category', 'tax', 'variants', 'variants.color', 'variants.size', 'variants.flavor', 'variants.prices', 'variants.measureUnit', 'variants.batches', 'images'],
+      relations: ['brand', 'category', 'tax', 'variants', 'variants.color', 'variants.size', 'variants.flavor', 'variants.prices', 'variants.measureUnit', 'variants.batches', 'variants.barcodes', 'images'],
       order: { name: 'ASC' },
     });
     return articles.map((a) => this.enrichArticle(a));
@@ -128,7 +161,7 @@ export class ArticlesService {
   async findOne(id: string): Promise<Article> {
     const a = await this.articleRepo.findOne({
       where: { id },
-      relations: ['brand', 'category', 'tax', 'variants', 'variants.color', 'variants.size', 'variants.flavor', 'variants.prices', 'variants.measureUnit', 'variants.batches', 'images'],
+      relations: ['brand', 'category', 'tax', 'variants', 'variants.color', 'variants.size', 'variants.flavor', 'variants.prices', 'variants.measureUnit', 'variants.batches', 'variants.barcodes', 'images'],
     });
     if (!a) throw new NotFoundException('Artículo no encontrado');
     return this.enrichArticle(a);
@@ -392,6 +425,19 @@ export class ArticlesService {
     });
     if (existingSku) throw new ConflictException('Ya existe una variante con ese SKU en esta empresa');
 
+    const masterBarcode = dto.barcode?.trim() || null;
+    if (masterBarcode) {
+      const masterOk = await this.isBarcodeAvailable(companyId, masterBarcode);
+      if (!masterOk) throw new ConflictException('El código de barras principal ya está asignado a otro artículo o variante');
+    }
+    const extraBarcodes = dto.barcodes ?? [];
+    for (const eb of extraBarcodes) {
+      const bc = (eb.barcode ?? '').trim();
+      if (!bc) continue;
+      const ok = await this.isBarcodeAvailable(companyId, bc);
+      if (!ok) throw new ConflictException(`El código de barras "${bc}" ya está asignado a otro artículo o variante`);
+    }
+
     const variant = this.variantRepo.create({
       articleId,
       companyId,
@@ -426,6 +472,17 @@ export class ArticlesService {
     });
     await this.priceRepo.save(price);
 
+    for (const eb of extraBarcodes) {
+      const bc = (eb.barcode ?? '').trim();
+      if (!bc) continue;
+      const barcodeRow = this.barcodeRepo.create({
+        articleVariantId: savedV.id,
+        barcode: bc,
+        description: (eb.description ?? '').trim() || null,
+      });
+      await this.barcodeRepo.save(barcodeRow);
+    }
+
     return this.findOne(articleId);
   }
 
@@ -448,7 +505,14 @@ export class ArticlesService {
       }
       variant.sku = skuTrimmed;
     }
-    if (dto.barcode !== undefined) variant.barcode = dto.barcode?.trim() || null;
+    if (dto.barcode !== undefined) {
+      const newMaster = dto.barcode?.trim() || null;
+      if (newMaster) {
+        const masterOk = await this.isBarcodeAvailable(companyId, newMaster, variantId);
+        if (!masterOk) throw new ConflictException('El código de barras principal ya está asignado a otro artículo o variante');
+      }
+      variant.barcode = newMaster;
+    }
     if (dto.cost != null) variant.cost = dto.cost;
     if (dto.colorId !== undefined) variant.colorId = dto.colorId || null;
     if (dto.sizeId !== undefined) variant.sizeId = dto.sizeId || null;
@@ -461,6 +525,27 @@ export class ArticlesService {
     if (variant.article?.code) variant.articleCode = variant.article.code;
 
     await this.variantRepo.save(variant);
+
+    if (dto.barcodes !== undefined) {
+      const extraBarcodes = dto.barcodes ?? [];
+      for (const eb of extraBarcodes) {
+        const bc = (eb.barcode ?? '').trim();
+        if (!bc) continue;
+        const ok = await this.isBarcodeAvailable(companyId, bc, variantId);
+        if (!ok) throw new ConflictException(`El código de barras "${bc}" ya está asignado a otro artículo o variante`);
+      }
+      await this.barcodeRepo.delete({ articleVariantId: variantId });
+      for (const eb of extraBarcodes) {
+        const bc = (eb.barcode ?? '').trim();
+        if (!bc) continue;
+        const barcodeRow = this.barcodeRepo.create({
+          articleVariantId: variantId,
+          barcode: bc,
+          description: (eb.description ?? '').trim() || null,
+        });
+        await this.barcodeRepo.save(barcodeRow);
+      }
+    }
 
     const pdto = dto.prices;
     if (pdto) {
