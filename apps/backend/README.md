@@ -57,6 +57,56 @@ $ npm run test:e2e
 $ npm run test:cov
 ```
 
+## Variables de entorno
+
+Copia `.env.example` a `.env` y configura:
+
+| Variable | Descripción |
+|----------|-------------|
+| `JWT_SECRET` | **Requerido.** Secreto para firmar tokens JWT. Generar con `openssl rand -base64 32` |
+| `CORS_ORIGIN` | Orígenes permitidos (separados por coma). Por defecto: localhost |
+| `DATABASE_URL` / `DB_*` | Conexión a PostgreSQL (ver sección base de datos) |
+
+## Troubleshooting: "Tenant or user not found"
+
+Este error aparece al conectar al **pooler de Supabase** (puerto 6543). El pooler exige usuario `postgres.[PROJECT_REF]`, no solo `postgres`.
+
+**Soluciones:**
+1. Añade `SUPABASE_PROJECT_REF` en tu `.env` (Supabase > Project Settings > General > Reference ID)
+2. O usa la URI completa de Supabase (Database > Connection string > Transaction) que ya incluye `postgres.[REF]`
+3. Para desarrollo local: pon `USE_LOCAL_DB=true` en `.env` y usa PostgreSQL local
+
+## Supabase: RLS y linter de seguridad
+
+El proyecto usa Supabase como PostgreSQL. El [Database Linter](https://supabase.com/docs/guides/database/database-linter) de Supabase reporta:
+
+- **RLS Disabled in Public**: tablas en `public` sin Row Level Security.
+- **Sensitive Columns Exposed**: tablas con columnas sensibles (ej. `tax_id`) expuestas sin RLS.
+
+### Criterio aplicado
+
+1. **Habilitar RLS en todas las tablas** del schema `public` que expone PostgREST. Así se cumple el linter y se evita que el acceso vía API (anon/authenticated) vea datos sin control.
+2. **El backend no se ve afectado**: NestJS se conecta con el usuario `postgres` (superuser), que en PostgreSQL **omite RLS**. TypeORM sigue leyendo/escribiendo con normalidad.
+3. **Sin políticas por ahora**: con RLS activado y sin políticas, las conexiones vía PostgREST (anon/authenticated) no ven filas. Si en el futuro se usa el cliente de Supabase desde el frontend, habrá que añadir políticas por tabla/rol.
+
+### Migración
+
+La migración `1743100000000-EnableRlsOnPublicTables` habilita RLS en las tablas listadas por el linter. Aplicar con:
+
+```bash
+npm run typeorm migration:run
+```
+
+(O el comando que use el proyecto para ejecutar migraciones.)
+
+### Referencia
+
+- [Supabase: RLS](https://supabase.com/docs/guides/auth/row-level-security)
+- [Linter: RLS disabled](https://supabase.com/docs/guides/database/database-linter?lint=0013_rls_disabled_in_public)
+- [Linter: Sensitive columns](https://supabase.com/docs/guides/database/database-linter?lint=0023_sensitive_columns_exposed)
+
+---
+
 ## Deployment
 
 When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.

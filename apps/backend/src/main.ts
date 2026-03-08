@@ -4,6 +4,7 @@ process.env.TZ = 'America/Guayaquil';
 import { NestFactory } from '@nestjs/core';
 import { join } from 'path';
 import { ValidationPipe, Logger } from '@nestjs/common';
+import helmet from 'helmet';
 import { ClsService } from './common/cls/cls-context.service';
 import { DataSource } from 'typeorm';
 import { AppModule } from './app.module';
@@ -44,16 +45,17 @@ async function bootstrap() {
     }),
   );
   app.use(cookieParser());
+  app.use(helmet({ crossOriginResourcePolicy: false })); // Permitir carga de recursos cross-origin (frontend)
 
   // Static files for uploads (article images)
   const express = await import('express');
   app.use('/uploads', express.static(join(process.cwd(), 'uploads')));
 
-  // CORS: frontend Next.js suele ir en 3000, backend en 3001
-  app.enableCors({
-    origin: ['http://localhost:3000', 'http://127.0.0.1:3000'],
-    credentials: true,
-  });
+  // CORS: configurable por entorno (CORS_ORIGIN separado por comas)
+  const corsOrigin = process.env.CORS_ORIGIN
+    ? process.env.CORS_ORIGIN.split(',').map((o) => o.trim()).filter(Boolean)
+    : ['http://localhost:3000', 'http://127.0.0.1:3000'];
+  app.enableCors({ origin: corsOrigin, credentials: true });
 
   const port = process.env.PORT ?? 3001;
   await app.listen(port);

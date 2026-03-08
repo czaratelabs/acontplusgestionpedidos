@@ -1,7 +1,9 @@
 import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { getDatabaseConfig } from './data-source';
+import { getDatabaseConfig, isSupabaseHost } from './data-source';
 import { ClsModule } from './common/cls/cls.module';
 import { AuthClsMiddleware } from './common/auth-cls.middleware';
 import { AuditSubscriber } from './audit-logs/audit.subscriber';
@@ -20,11 +22,22 @@ import { ArticlesModule } from './articles/articles.module';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    ThrottlerModule.forRoot([
+      {
+        ttl: parseInt(process.env.THROTTLE_TTL ?? '60000', 10),
+        limit: parseInt(process.env.THROTTLE_LIMIT ?? '100', 10),
+      },
+    ]),
     ClsModule,
     TypeOrmModule.forRoot({
       type: 'postgres',
       ...getDatabaseConfig(),
-      ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
+      ssl: (() => {
+        const cfg = getDatabaseConfig();
+        if (process.env.DB_SSL === 'true' || process.env.DB_SSL === '1') return { rejectUnauthorized: false };
+        if (isSupabaseHost(cfg.host, cfg.url)) return { rejectUnauthorized: false };
+        return false;
+      })(),
       autoLoadEntities: true,
       synchronize: false,
       subscribers: [TimestampSubscriber],
@@ -40,7 +53,10 @@ import { ArticlesModule } from './articles/articles.module';
     BusinessRulesModule,
     ArticlesModule,    // Parent-Variant articles (logistics)
   ],
-  providers: [AuditSubscriber],
+  providers: [
+    AuditSubscriber,
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+  ],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {

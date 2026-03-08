@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, Star, Upload, Info, Pencil, X, Check, Lock } from "lucide-react";
+import { Plus, Trash2, Star, Upload, Info, Pencil, X, Check, Lock, Boxes } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -139,6 +139,12 @@ type Batch = {
 
 type AdditionalBarcode = { barcode: string; description: string };
 
+/** Configuración de unidad fraccionaria (ej. venta por metro desde rollo). */
+type FractionConfig = {
+  fraction_name: string;
+  conversion_factor: string;
+};
+
 type VariantRow = {
   id?: string;
   sku: string;
@@ -155,6 +161,12 @@ type VariantRow = {
   weight: string;
   observations: string;
   prices: PricesRow;
+  /** Unidades fraccionarias activadas (ej. venta por metro). */
+  fractionEnabled?: boolean;
+  /** Lista de fracciones (nombre sub-unidad + factor). fraction_cost = base_cost * conversion_factor. */
+  fractions: FractionConfig[];
+  /** Precios PVP por tarifa para la primera fracción (misma lógica que prices). */
+  fractionPrices: PricesRow;
 };
 
 const emptyVariant = (): VariantRow => ({
@@ -169,6 +181,9 @@ const emptyVariant = (): VariantRow => ({
   weight: "0",
   observations: "",
   prices: emptyPrices(),
+  fractionEnabled: false,
+  fractions: [],
+  fractionPrices: emptyPrices(),
 });
 
 function getBatchRowClass(expirationDate: string | null): string {
@@ -451,7 +466,7 @@ export function ArticleFormDialog({
     return JSON.stringify(current) !== JSON.stringify(originalVariantSnapshot);
   }
 
-  /** Mandatory variant fields: sku, barcode, cost (SIN IVA > 0), cost INC IVA, measure_id. Used to enable/disable Guardar and show validation. */
+  /** Mandatory variant fields: sku, barcode, cost (SIN IVA > 0), cost INC IVA, measure_id. Fraction: if enabled, name and conversion_factor required. */
   function getVariantValidation(index: number): { valid: boolean; message: string } {
     const v = variants[index];
     if (!v) return { valid: false, message: "Variante no encontrada." };
@@ -465,6 +480,17 @@ export function ArticleFormDialog({
     const costIncIvaOk = (costIncIvaVal !== "" && costIncIvaNum > 0) || (costNum > 0 && Boolean(taxId?.trim()));
     if (!costIncIvaOk) missing.push("Precio de Costo INC IVA (mayor a cero)");
     if (!v.measureId?.trim()) missing.push("Medida");
+    if (v.fractionEnabled) {
+      if ((v.fractions ?? []).length === 0) {
+        missing.push("Añada al menos una fracción (nombre y factor de conversión).");
+      } else {
+        (v.fractions ?? []).forEach((f, idx) => {
+          if (!(f.fraction_name ?? "").trim()) missing.push(`Fracción ${idx + 1}: nombre de sub-unidad`);
+          const factor = parseFloat(String(f.conversion_factor ?? "").replace(",", ".")) || 0;
+          if (factor <= 0 || factor > 1) missing.push(`Fracción ${idx + 1}: factor de conversión (0 < factor ≤ 1)`);
+        });
+      }
+    }
     const valid = missing.length === 0;
     const message = valid ? "" : "Complete los campos obligatorios: " + missing.join(", ") + ".";
     return { valid, message };
@@ -568,6 +594,12 @@ export function ArticleFormDialog({
       const additionalBarcodes: AdditionalBarcode[] = Array.isArray(barcodesRaw)
         ? barcodesRaw.map((b) => ({ barcode: String(b.barcode ?? ""), description: String(b.description ?? "") }))
         : [];
+      const fractionEnabled = Boolean((vr as Record<string, unknown>).fractionEnabled);
+      const fractionsRaw = (vr as Record<string, unknown>).fractions as FractionConfig[] | undefined;
+      const fractions: FractionConfig[] = Array.isArray(fractionsRaw)
+        ? fractionsRaw.map((f) => ({ fraction_name: String(f?.fraction_name ?? ""), conversion_factor: String(f?.conversion_factor ?? "") }))
+        : [];
+      const fractionPrices = emptyPrices();
       return {
         id: vr.id as string,
         sku: String(vr.sku ?? ""),
@@ -581,6 +613,9 @@ export function ArticleFormDialog({
         weight: String(vr.weight ?? 0),
         observations: String(vr.observations ?? ""),
         prices,
+        fractionEnabled,
+        fractions,
+        fractionPrices,
       };
     });
   }
@@ -876,6 +911,11 @@ export function ArticleFormDialog({
                   barcode: b.barcode ?? "",
                   description: b.description ?? "",
                 }));
+                const fractionEnabled = Boolean((v as Record<string, unknown>).fractionEnabled);
+                const fractionsRaw = (v as Record<string, unknown>).fractions as FractionConfig[] | undefined;
+                const fractions: FractionConfig[] = Array.isArray(fractionsRaw)
+                  ? fractionsRaw.map((f) => ({ fraction_name: String(f?.fraction_name ?? ""), conversion_factor: String(f?.conversion_factor ?? "") }))
+                  : [];
                 return {
                   id: v.id,
                   sku: v.sku,
@@ -889,6 +929,9 @@ export function ArticleFormDialog({
                   weight: String(v.weight ?? 0),
                   observations: v.observations ?? "",
                   prices,
+                  fractionEnabled,
+                  fractions,
+                  fractionPrices: emptyPrices(),
                 };
               })
             : []
@@ -1078,7 +1121,7 @@ export function ArticleFormDialog({
   function updateVariant(
     index: number,
     field: keyof VariantRow,
-    value: string | VariantRow["prices"] | AdditionalBarcode[],
+    value: string | VariantRow["prices"] | AdditionalBarcode[] | boolean | FractionConfig[],
   ) {
     setVariants((prev) => {
       const next = [...prev];
@@ -1126,6 +1169,18 @@ export function ArticleFormDialog({
     setVariants((prev) => {
       const next = [...prev];
       (next[variantIndex].prices as Record<string, string>)[field] = value;
+      return next;
+    });
+  }
+
+  function updateVariantFractionPriceField(variantIndex: number, field: keyof PricesRow, value: string) {
+    setVariants((prev) => {
+      const next = [...prev];
+      const v = next[variantIndex];
+      if (!v) return prev;
+      const fp = { ...(v.fractionPrices ?? emptyPrices()) } as Record<string, string>;
+      fp[field] = value;
+      next[variantIndex] = { ...v, fractionPrices: fp as PricesRow };
       return next;
     });
   }
@@ -1200,6 +1255,71 @@ export function ArticleFormDialog({
     if (list[barcodeIndex]) list[barcodeIndex] = { ...list[barcodeIndex], description };
     updateVariant(variantIndex, "additionalBarcodes", list);
     setEditingBarcodeDescription(null);
+  }
+
+  /** Coste de la primera fracción: base_cost * conversion_factor. */
+  function getFractionCost(v: VariantRow): number {
+    const cost = parseFloat(String(v.cost ?? "0")) || 0;
+    const first = (v.fractions ?? [])[0];
+    const factor = first ? parseFloat(String(first.conversion_factor ?? "0").replace(",", ".")) || 0 : 0;
+    return roundToFive(cost * factor, 5);
+  }
+
+  /** Activa/desactiva unidades fraccionarias. Al activar, añade una fracción si la lista está vacía. */
+  function toggleFractionEnabled(variantIndex: number) {
+    const v = variants[variantIndex];
+    if (!v) return;
+    const nextEnabled = !v.fractionEnabled;
+    setVariants((prev) => {
+      const next = [...prev];
+      const curr = next[variantIndex];
+      if (!curr) return prev;
+      const fractions = curr.fractions ?? [];
+      const newFractions =
+        nextEnabled && fractions.length === 0 ? [{ fraction_name: "", conversion_factor: "" }] : fractions;
+      next[variantIndex] = {
+        ...curr,
+        fractionEnabled: nextEnabled,
+        fractions: newFractions,
+        fractionPrices: nextEnabled ? curr.fractionPrices ?? emptyPrices() : emptyPrices(),
+      };
+      return next;
+    });
+  }
+
+  /** Actualiza un campo de una fracción. */
+  function updateFractionField(variantIndex: number, fractionIndex: number, field: keyof FractionConfig, value: string) {
+    setVariants((prev) => {
+      const next = [...prev];
+      const curr = next[variantIndex];
+      if (!curr?.fractions?.length) return prev;
+      const list = [...curr.fractions];
+      if (list[fractionIndex]) list[fractionIndex] = { ...list[fractionIndex], [field]: value };
+      next[variantIndex] = { ...curr, fractions: list };
+      return next;
+    });
+  }
+
+  /** Añade otra fracción a la variante. */
+  function addFraction(variantIndex: number) {
+    const v = variants[variantIndex];
+    if (!v) return;
+    updateVariant(variantIndex, "fractions", [...(v.fractions ?? []), { fraction_name: "", conversion_factor: "" }]);
+  }
+
+  /** Elimina una fracción. */
+  function removeFraction(variantIndex: number, fractionIndex: number) {
+    const v = variants[variantIndex];
+    if (!v) return;
+    const list = (v.fractions ?? []).filter((_, j) => j !== fractionIndex);
+    updateVariant(variantIndex, "fractions", list);
+    if (list.length === 0) {
+      setVariants((prev) => {
+        const next = [...prev];
+        if (next[variantIndex]) next[variantIndex] = { ...next[variantIndex], fractionEnabled: false, fractionPrices: emptyPrices() };
+        return next;
+      });
+    }
   }
 
   /**
@@ -1281,6 +1401,140 @@ export function ArticleFormDialog({
       next[variantIndex] = { ...curr, prices: prices as PricesRow };
       return next;
     });
+  }
+
+  /** Misma lógica que handleSalePriceCalculation pero para precios de la fracción (usa fraction cost). */
+  function handleFractionSalePriceCalculation(variantIndex: number, key: number) {
+    const v = variants[variantIndex];
+    if (!v?.fractionEnabled || (v.fractions ?? []).length === 0) return;
+    const cost = getFractionCost(v);
+    const ivaPct = taxId ? (taxes.find((t) => t.id === taxId)?.percentage ?? 0) : 0;
+    const costIncIva = ivaPct !== 0 ? roundToFive(cost * (1 + ivaPct / 100), 5) : cost;
+
+    const raw = (v.fractionPrices ?? emptyPrices())[`precioVenta${key}` as keyof PricesRow];
+    const precioVentaNum = parseFloat(String(raw ?? "")) || 0;
+    const isEmpty = raw === "" || raw == null;
+    const isInvalid = isEmpty || precioVentaNum <= 0 || precioVentaNum <= cost;
+
+    setVariants((prev) => {
+      const next = [...prev];
+      const curr = next[variantIndex];
+      if (!curr?.fractionPrices) return prev;
+      const prices = { ...(curr.fractionPrices as Record<string, string>) };
+
+      if (isInvalid) {
+        prices[`precioVenta${key}`] = "0";
+        prices[`pvp${key}`] = "0";
+        prices[`porcentajeRentabilidad${key}`] = "0";
+        prices[`rentabilidad${key}`] = "0";
+        prices[`rentabilidadIncIva${key}`] = "0";
+      } else {
+        const pv = roundToFive(precioVentaNum, 5);
+        const pvp = roundToFive(pv * (1 + ivaPct / 100), 5);
+        const pctRent = cost > 0 ? roundToFive(((pv - cost) / cost) * 100, 5) : 0;
+        const valorRent = roundToFive(pv - cost, 5);
+        const valorRentIncIva = roundToFive(pvp - costIncIva, 5);
+
+        prices[`precioVenta${key}`] = formatDecimal(pv);
+        prices[`pvp${key}`] = formatDecimal(pvp);
+        prices[`porcentajeRentabilidad${key}`] = formatDecimal(pctRent);
+        prices[`rentabilidad${key}`] = formatDecimal(valorRent);
+        prices[`rentabilidadIncIva${key}`] = formatDecimal(valorRentIncIva);
+      }
+
+      next[variantIndex] = { ...curr, fractionPrices: prices as PricesRow };
+      return next;
+    });
+  }
+
+  /** Misma lógica que handlePvpCalculation pero para PVP de la fracción. */
+  function handleFractionPvpCalculation(variantIndex: number, rowIndex: number) {
+    const v = variants[variantIndex];
+    if (!v?.fractionEnabled || (v.fractions ?? []).length === 0) return;
+    const cost = getFractionCost(v);
+    const ivaPct = taxId ? (taxes.find((t) => t.id === taxId)?.percentage ?? 0) : 0;
+    const costIncIva = ivaPct !== 0 ? roundToFive(cost * (1 + ivaPct / 100), 5) : cost;
+
+    const raw = (v.fractionPrices ?? emptyPrices())[`pvp${rowIndex}` as keyof PricesRow];
+    const pvpNum = parseFloat(String(raw ?? "")) || 0;
+    const isEmpty = raw === "" || raw == null;
+    const isInvalid = isEmpty || pvpNum <= 0 || pvpNum <= costIncIva;
+
+    setVariants((prev) => {
+      const next = [...prev];
+      const curr = next[variantIndex];
+      if (!curr?.fractionPrices) return prev;
+      const prices = { ...(curr.fractionPrices as Record<string, string>) };
+
+      if (isInvalid) {
+        prices[`precioVenta${rowIndex}`] = "0";
+        prices[`pvp${rowIndex}`] = "0";
+        prices[`porcentajeRentabilidad${rowIndex}`] = "0";
+        prices[`rentabilidad${rowIndex}`] = "0";
+        prices[`rentabilidadIncIva${rowIndex}`] = "0";
+      } else {
+        const pvp = roundToFive(pvpNum, 5);
+        const precioVenta = ivaPct !== 0 ? roundToFive(pvp / (1 + ivaPct / 100), 5) : pvp;
+        const pctRent = cost > 0 ? roundToFive(((precioVenta - cost) / cost) * 100, 5) : 0;
+        const valorRent = roundToFive(precioVenta - cost, 5);
+        const valorRentIncIva = roundToFive(pvp - costIncIva, 5);
+
+        prices[`precioVenta${rowIndex}`] = formatDecimal(precioVenta);
+        prices[`pvp${rowIndex}`] = formatDecimal(pvp);
+        prices[`porcentajeRentabilidad${rowIndex}`] = formatDecimal(pctRent);
+        prices[`rentabilidad${rowIndex}`] = formatDecimal(valorRent);
+        prices[`rentabilidadIncIva${rowIndex}`] = formatDecimal(valorRentIncIva);
+      }
+
+      next[variantIndex] = { ...curr, fractionPrices: prices as PricesRow };
+      return next;
+    });
+  }
+
+  /** Misma lógica que applyPctRentBlurOrEnter pero para % Rent de la fracción. */
+  function applyFractionPctRentBlurOrEnter(variantIndex: number, key: number) {
+    const v = variants[variantIndex];
+    if (!v?.fractionEnabled || (v.fractions ?? []).length === 0) return;
+    const raw = (v.fractionPrices ?? emptyPrices())[`porcentajeRentabilidad${key}` as keyof PricesRow];
+    const numVal = parseFloat(String(raw ?? "")) || 0;
+    const finalVal = numVal < 0 || raw === "" || raw == null ? 0 : numVal;
+
+    if (finalVal === 0) {
+      setVariants((prev) => {
+        const next = [...prev];
+        const curr = next[variantIndex];
+        if (!curr?.fractionPrices) return prev;
+        const prices = { ...(curr.fractionPrices as Record<string, string>) };
+        prices[`porcentajeRentabilidad${key}`] = "0";
+        prices[`precioVenta${key}`] = "0";
+        prices[`pvp${key}`] = "0";
+        prices[`rentabilidad${key}`] = "0";
+        prices[`rentabilidadIncIva${key}`] = "0";
+        next[variantIndex] = { ...curr, fractionPrices: prices as PricesRow };
+        return next;
+      });
+    } else {
+      const cost = getFractionCost(v);
+      const ivaPct = taxId ? (taxes.find((t) => t.id === taxId)?.percentage ?? 0) : 0;
+      const costIncIva = ivaPct !== 0 ? roundToFive(cost * (1 + ivaPct / 100), 5) : cost;
+      const precioVenta = cost > 0 ? roundToFive(cost * (1 + finalVal / 100), 5) : 0;
+      const pvp = ivaPct !== 0 ? roundToFive(precioVenta * (1 + ivaPct / 100), 5) : precioVenta;
+      const valorRent = roundToFive(precioVenta - cost, 5);
+      const valorRentIncIva = roundToFive(pvp - costIncIva, 5);
+      setVariants((prev) => {
+        const next = [...prev];
+        const curr = next[variantIndex];
+        if (!curr?.fractionPrices) return prev;
+        const prices = { ...(curr.fractionPrices as Record<string, string>) };
+        prices[`porcentajeRentabilidad${key}`] = formatDecimal(finalVal);
+        prices[`precioVenta${key}`] = formatDecimal(precioVenta);
+        prices[`pvp${key}`] = formatDecimal(pvp);
+        prices[`rentabilidad${key}`] = formatDecimal(valorRent);
+        prices[`rentabilidadIncIva${key}`] = formatDecimal(valorRentIncIva);
+        next[variantIndex] = { ...curr, fractionPrices: prices as PricesRow };
+        return next;
+      });
+    }
   }
 
   /**
@@ -1883,12 +2137,12 @@ export function ArticleFormDialog({
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col bg-white text-slate-800 font-acont p-0 w-[95vw] sm:w-full rounded-lg shadow-[0_4px_15px_rgba(0,0,0,0.1)] border border-slate-200">
         {/* Toolbar superior: solo título y descripción (el botón Nuevo está en el footer para no solaparse con cerrar) */}
         <div className="flex flex-col gap-1 px-4 py-3 sm:px-6 sm:py-4 pr-12 sm:pr-14 border-b border-slate-200 bg-white shrink-0">
-          <h2 className="text-lg sm:text-xl font-semibold text-slate-800 m-0">
+          <DialogTitle className="text-lg sm:text-xl font-semibold text-slate-800 m-0">
             {isEditing ? "Editar Artículo" : "Gestión de Artículos"}
-          </h2>
-          <p className="text-slate-500 text-sm mt-0.5">
+          </DialogTitle>
+          <DialogDescription className="text-slate-500 text-sm mt-0.5">
             Guarda los datos generales y añade variantes después.
-          </p>
+          </DialogDescription>
         </div>
         <Tabs value={activeTab} onValueChange={handleTabChange} className="flex flex-col min-h-0 flex-1 overflow-hidden">
           <TabsList className="w-full grid grid-cols-4 rounded-none border-b-0 px-0 overflow-x-auto touch-pan-x shrink-0">
@@ -2024,6 +2278,23 @@ export function ArticleFormDialog({
             </TabsContent>
 
             <TabsContent value="variants" className="flex-1 overflow-y-auto min-h-0 mt-0 p-4 sm:p-6 md:p-8 space-y-4 data-[state=inactive]:hidden">
+              {/* Resumen del artículo (solo lectura) */}
+              <div className="mb-6 p-4 rounded-lg border border-slate-200 bg-slate-50/80 flex flex-wrap gap-6 items-center font-acont">
+                <div>
+                  <p className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Código Maestro</p>
+                  <p className="text-sm font-mono font-bold text-acont-primary">{code || "—"}</p>
+                </div>
+                <div className="flex-1 min-w-[200px]">
+                  <p className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Artículo Base</p>
+                  <p className="text-sm font-semibold text-slate-800 uppercase">{name || "—"}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Categoría</p>
+                  <p className="text-sm font-medium text-slate-700">
+                    {localCategories.find((c) => c.id === categoryId)?.name ?? "Sin Categoría"}
+                  </p>
+                </div>
+              </div>
               <div className="flex justify-between items-center mb-2 flex-wrap gap-2">
                 <div className="flex items-center gap-4">
                   <Label>Variantes</Label>
@@ -2302,21 +2573,96 @@ export function ArticleFormDialog({
                               className="h-8 mt-0.5 w-full"
                             />
                           </div>
-                          <div>
-                            <Label htmlFor={`measure-${i}`} className="text-xs">Medida <span className="text-red-500">*</span></Label>
-                            <CatalogSelectWithCreate
-                              companyId={companyId}
-                              catalogKey="measures"
-                              items={localMeasures}
-                              value={v.measureId}
-                              onChange={(val) => updateVariant(i, "measureId", val)}
-                              onItemCreated={(item) => setLocalMeasures((prev) => [...prev, item])}
-                              emptyLabel="— Seleccionar —"
-                              valueKey="id"
-                              selectClassName="h-8 mt-0.5 w-full"
-                            />
+                          <div className="flex flex-col sm:flex-row sm:items-end gap-2">
+                            <div className="flex-1 min-w-0">
+                              <Label htmlFor={`measure-${i}`} className="text-xs">Medida <span className="text-red-500">*</span></Label>
+                              <CatalogSelectWithCreate
+                                companyId={companyId}
+                                catalogKey="measures"
+                                items={localMeasures}
+                                value={v.measureId}
+                                onChange={(val) => updateVariant(i, "measureId", val)}
+                                onItemCreated={(item) => setLocalMeasures((prev) => [...prev, item])}
+                                emptyLabel="— Seleccionar —"
+                                valueKey="id"
+                                selectClassName="h-8 mt-0.5 w-full"
+                              />
+                            </div>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-8 px-2 shrink-0 border-[var(--acont-secondary)] text-[var(--acont-secondary)] hover:bg-[#FFA901]/10 data-[active]:bg-[#FFA901]/20"
+                              onClick={() => toggleFractionEnabled(i)}
+                              title={v.fractionEnabled ? "Desactivar unidades fraccionarias" : "Activar unidades fraccionarias (ej. venta por metro)"}
+                              data-active={v.fractionEnabled ? "true" : undefined}
+                            >
+                              <Boxes className="h-4 w-4" />
+                            </Button>
                           </div>
                         </div>
+                        <Collapsible open={v.fractionEnabled}>
+                          <CollapsibleContent>
+                            <div
+                              className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 rounded-lg border border-[#FFA901]/30 bg-[#FFA901]/5 p-4 mt-2 transition-all duration-200 ease-out"
+                            >
+                                <div className="sm:col-span-full">
+                                  <h4 className="text-xs font-semibold text-slate-700 mb-2 flex items-center gap-1.5">
+                                    <Boxes className="h-3.5 w-3.5 text-[var(--acont-secondary)]" />
+                                    Configuración de unidades fraccionarias
+                                  </h4>
+                                  <p className="text-[11px] text-slate-500 mb-3">
+                                    Factor relativo a <strong>{v.measureId ? (localMeasures.find((m) => m.id === v.measureId)?.name ?? "Unidad") : "Unidad"}</strong> (medida base).
+                                  </p>
+                                </div>
+                                {(v.fractions ?? []).map((frac, fj) => (
+                                  <div key={fj} className="rounded border border-slate-200 bg-white dark:bg-slate-800/50 p-3 space-y-2">
+                                    <div className="flex items-center justify-between gap-2">
+                                      <span className="text-xs font-medium text-slate-600">Fracción {fj + 1}</span>
+                                      {(v.fractions?.length ?? 0) > 1 && (
+                                        <Button type="button" variant="ghost" size="sm" className="h-6 w-6 p-0 text-slate-500 hover:text-destructive" onClick={() => removeFraction(i, fj)} aria-label="Quitar fracción">
+                                          <X className="h-3.5 w-3.5" />
+                                        </Button>
+                                      )}
+                                    </div>
+                                    <div>
+                                      <Label className="text-xs">Nombre sub-unidad</Label>
+                                      <Input
+                                        placeholder="Ej: Metro"
+                                        value={frac.fraction_name}
+                                        onChange={(e) => updateFractionField(i, fj, "fraction_name", e.target.value)}
+                                        className="h-8 mt-0.5 text-xs"
+                                      />
+                                    </div>
+                                    <div>
+                                      <Label className="text-xs">Factor de conversión (0 &lt; factor ≤ 1)</Label>
+                                      <Input
+                                        type="number"
+                                        min={0.00001}
+                                        max={1}
+                                        step={0.01}
+                                        placeholder="Ej: 0.10 (1 unidad = 10 fracciones)"
+                                        value={frac.conversion_factor}
+                                        onChange={(e) => updateFractionField(i, fj, "conversion_factor", e.target.value)}
+                                        className="h-8 mt-0.5 text-xs"
+                                      />
+                                    </div>
+                                    <div>
+                                      <Label className="text-xs text-slate-500">Coste fracción (solo lectura)</Label>
+                                      <p className="text-sm font-medium tabular-nums mt-0.5 text-[var(--acont-secondary)]">
+                                        {formatDecimal(getFractionCost(v))}
+                                      </p>
+                                    </div>
+                                  </div>
+                                ))}
+                                <div className="flex items-end">
+                                  <Button type="button" variant="outline" size="sm" className="text-xs border-dashed border-[var(--acont-secondary)] text-[var(--acont-secondary)]" onClick={() => addFraction(i)}>
+                                    + Añadir otra fracción
+                                  </Button>
+                                </div>
+                              </div>
+                          </CollapsibleContent>
+                        </Collapsible>
                         <div>
                           <Label className="mb-1 block text-xs">Tarifas PVP</Label>
                           <div className="rounded border bg-slate-50/50 overflow-hidden max-w-4xl [&_th]:py-1 [&_th]:px-2 [&_td]:py-0.5 [&_td]:px-1.5">
@@ -2334,84 +2680,171 @@ export function ArticleFormDialog({
                               <TableBody>
                                 {TARIFAS_KEYS.map((key) => (
                                   <TableRow key={key} className="border-b last:border-0">
-                                    <TableCell className="font-medium text-xs">{tariffLabels[String(key)] ?? `Tarifa ${key}`}</TableCell>
-                                    <TableCell className="p-0.5">
-                                      <Input
-                                        id={`precioVenta-${i}-${key}`}
-                                        type="number"
-                                        min={0}
-                                        step={0.00001}
-                                        value={v.prices[`precioVenta${key}` as keyof PricesRow] ?? ""}
-                                        onChange={(e) => updateVariantPriceField(i, `precioVenta${key}` as keyof PricesRow, e.target.value)}
-                                        onFocus={(e) => e.currentTarget.select()}
-                                        onBlur={() => handleSalePriceCalculation(i, key)}
-                                        onKeyDown={(e) => {
-                                          if (e.key === "Enter") {
-                                            e.preventDefault();
-                                            e.stopPropagation();
-                                            handleSalePriceCalculation(i, key);
-                                            focusPriceCellBelow(i, "precioVenta", key);
-                                          }
-                                        }}
-                                        className="h-7 w-full min-w-[7rem] max-w-[8.5rem] text-xs"
-                                      />
+                                    <TableCell className="font-medium text-xs align-top pt-1.5">{tariffLabels[String(key)] ?? `Tarifa ${key}`}</TableCell>
+                                    <TableCell className="p-0.5 align-top">
+                                      <div className="flex flex-col gap-0.5">
+                                        <Input
+                                          id={`precioVenta-${i}-${key}`}
+                                          type="number"
+                                          min={0}
+                                          step={0.00001}
+                                          value={v.prices[`precioVenta${key}` as keyof PricesRow] ?? ""}
+                                          onChange={(e) => updateVariantPriceField(i, `precioVenta${key}` as keyof PricesRow, e.target.value)}
+                                          onFocus={(e) => e.currentTarget.select()}
+                                          onBlur={() => handleSalePriceCalculation(i, key)}
+                                          onKeyDown={(e) => {
+                                            if (e.key === "Enter") {
+                                              e.preventDefault();
+                                              e.stopPropagation();
+                                              handleSalePriceCalculation(i, key);
+                                              focusPriceCellBelow(i, "precioVenta", key);
+                                            }
+                                          }}
+                                          className="h-7 w-full min-w-[7rem] max-w-[8.5rem] text-xs border-[var(--acont-primary)]/50 bg-[#D61672]/10 focus-visible:ring-[var(--acont-primary)]"
+                                        />
+                                        {v.fractionEnabled && (v.fractions ?? []).length > 0 && (
+                                          <Input
+                                            id={`frac-precioVenta-${i}-${key}`}
+                                            type="number"
+                                            min={0}
+                                            step={0.00001}
+                                            placeholder="Fracción"
+                                            value={(v.fractionPrices ?? emptyPrices())[`precioVenta${key}` as keyof PricesRow] ?? ""}
+                                            onChange={(e) => updateVariantFractionPriceField(i, `precioVenta${key}` as keyof PricesRow, e.target.value)}
+                                            onFocus={(e) => e.currentTarget.select()}
+                                            onBlur={() => handleFractionSalePriceCalculation(i, key)}
+                                            onKeyDown={(e) => {
+                                              if (e.key === "Enter") {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                handleFractionSalePriceCalculation(i, key);
+                                              }
+                                            }}
+                                            className="h-6 w-full min-w-[7rem] max-w-[8.5rem] text-xs border-[#FFA901]/50 bg-[#FFA901]/15 focus-visible:ring-[#FFA901]"
+                                          />
+                                        )}
+                                      </div>
                                     </TableCell>
-                                    <TableCell className="p-0.5">
-                                      <Input
-                                        id={`pvp-${i}-${key}`}
-                                        type="number"
-                                        min={0}
-                                        step={0.00001}
-                                        value={v.prices[`pvp${key}` as keyof PricesRow] ?? ""}
-                                        onChange={(e) => updateVariantPriceField(i, `pvp${key}` as keyof PricesRow, e.target.value)}
-                                        onFocus={(e) => e.currentTarget.select()}
-                                        onBlur={() => handlePvpCalculation(i, key)}
-                                        onKeyDown={(e) => {
-                                          if (e.key === "Enter") {
-                                            e.preventDefault();
-                                            e.stopPropagation();
-                                            handlePvpCalculation(i, key);
-                                            focusPriceCellBelow(i, "pvp", key);
-                                          }
-                                        }}
-                                        className="h-7 w-full min-w-[7rem] max-w-[8.5rem] text-xs"
-                                      />
+                                    <TableCell className="p-0.5 align-top">
+                                      <div className="flex flex-col gap-0.5">
+                                        <Input
+                                          id={`pvp-${i}-${key}`}
+                                          type="number"
+                                          min={0}
+                                          step={0.00001}
+                                          value={v.prices[`pvp${key}` as keyof PricesRow] ?? ""}
+                                          onChange={(e) => updateVariantPriceField(i, `pvp${key}` as keyof PricesRow, e.target.value)}
+                                          onFocus={(e) => e.currentTarget.select()}
+                                          onBlur={() => handlePvpCalculation(i, key)}
+                                          onKeyDown={(e) => {
+                                            if (e.key === "Enter") {
+                                              e.preventDefault();
+                                              e.stopPropagation();
+                                              handlePvpCalculation(i, key);
+                                              focusPriceCellBelow(i, "pvp", key);
+                                            }
+                                          }}
+                                          className="h-7 w-full min-w-[7rem] max-w-[8.5rem] text-xs border-[var(--acont-primary)]/50 bg-[#D61672]/10 focus-visible:ring-[var(--acont-primary)]"
+                                        />
+                                        {v.fractionEnabled && (v.fractions ?? []).length > 0 && (
+                                          <Input
+                                            id={`frac-pvp-${i}-${key}`}
+                                            type="number"
+                                            min={0}
+                                            step={0.00001}
+                                            placeholder="Fracción"
+                                            value={(v.fractionPrices ?? emptyPrices())[`pvp${key}` as keyof PricesRow] ?? ""}
+                                            onChange={(e) => updateVariantFractionPriceField(i, `pvp${key}` as keyof PricesRow, e.target.value)}
+                                            onFocus={(e) => e.currentTarget.select()}
+                                            onBlur={() => handleFractionPvpCalculation(i, key)}
+                                            onKeyDown={(e) => {
+                                              if (e.key === "Enter") {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                handleFractionPvpCalculation(i, key);
+                                              }
+                                            }}
+                                            className="h-6 w-full min-w-[7rem] max-w-[8.5rem] text-xs border-[#FFA901]/50 bg-[#FFA901]/15 focus-visible:ring-[#FFA901]"
+                                          />
+                                        )}
+                                      </div>
                                     </TableCell>
-                                    <TableCell className="p-0.5">
-                                      <Input
-                                        id={`pctRent-${i}-${key}`}
-                                        type="number"
-                                        min={-100}
-                                        step={0.00001}
-                                        placeholder="%"
-                                        value={v.prices[`porcentajeRentabilidad${key}` as keyof PricesRow] ?? ""}
-                                        onChange={(e) => updateVariantPriceField(i, `porcentajeRentabilidad${key}` as keyof PricesRow, e.target.value)}
-                                        onFocus={(e) => e.currentTarget.select()}
-                                        onBlur={() => applyPctRentBlurOrEnter(i, key)}
-                                        onKeyDown={(e) => {
-                                          if (e.key === "Enter") {
-                                            e.preventDefault();
-                                            e.stopPropagation();
-                                            applyPctRentBlurOrEnter(i, key);
-                                            focusPctRentBelow(i, key);
-                                          }
-                                        }}
-                                        className="h-7 w-full min-w-[5.5rem] max-w-[6.5rem] text-xs"
-                                      />
+                                    <TableCell className="p-0.5 align-top">
+                                      <div className="flex flex-col gap-0.5">
+                                        <Input
+                                          id={`pctRent-${i}-${key}`}
+                                          type="number"
+                                          min={-100}
+                                          step={0.00001}
+                                          placeholder="%"
+                                          value={v.prices[`porcentajeRentabilidad${key}` as keyof PricesRow] ?? ""}
+                                          onChange={(e) => updateVariantPriceField(i, `porcentajeRentabilidad${key}` as keyof PricesRow, e.target.value)}
+                                          onFocus={(e) => e.currentTarget.select()}
+                                          onBlur={() => applyPctRentBlurOrEnter(i, key)}
+                                          onKeyDown={(e) => {
+                                            if (e.key === "Enter") {
+                                              e.preventDefault();
+                                              e.stopPropagation();
+                                              applyPctRentBlurOrEnter(i, key);
+                                              focusPctRentBelow(i, key);
+                                            }
+                                          }}
+                                          className="h-7 w-full min-w-[5.5rem] max-w-[6.5rem] text-xs border-[var(--acont-primary)]/50 bg-[#D61672]/10 focus-visible:ring-[var(--acont-primary)]"
+                                        />
+                                        {v.fractionEnabled && (v.fractions ?? []).length > 0 && (
+                                          <Input
+                                            id={`frac-pctRent-${i}-${key}`}
+                                            type="number"
+                                            min={-100}
+                                            step={0.00001}
+                                            placeholder="%"
+                                            value={(v.fractionPrices ?? emptyPrices())[`porcentajeRentabilidad${key}` as keyof PricesRow] ?? ""}
+                                            onChange={(e) => updateVariantFractionPriceField(i, `porcentajeRentabilidad${key}` as keyof PricesRow, e.target.value)}
+                                            onFocus={(e) => e.currentTarget.select()}
+                                            onBlur={() => applyFractionPctRentBlurOrEnter(i, key)}
+                                            onKeyDown={(e) => {
+                                              if (e.key === "Enter") {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                applyFractionPctRentBlurOrEnter(i, key);
+                                              }
+                                            }}
+                                            className="h-6 w-full min-w-[5.5rem] max-w-[6.5rem] text-xs border-[#FFA901]/50 bg-[#FFA901]/15 focus-visible:ring-[#FFA901]"
+                                          />
+                                        )}
+                                      </div>
                                     </TableCell>
-                                    <TableCell className="py-0.5 px-1 min-w-[5rem]">
-                                      <span className="text-xs text-slate-600 tabular-nums">
-                                        {(v.prices[`rentabilidad${key}` as keyof PricesRow] ?? "") === ""
-                                          ? ""
-                                          : formatDecimal(v.prices[`rentabilidad${key}` as keyof PricesRow] ?? 0)}
-                                      </span>
+                                    <TableCell className="py-0.5 px-1 min-w-[5rem] align-top">
+                                      <div className="flex flex-col gap-0.5">
+                                        <span className="text-xs text-slate-600 tabular-nums">
+                                          {(v.prices[`rentabilidad${key}` as keyof PricesRow] ?? "") === ""
+                                            ? ""
+                                            : formatDecimal(v.prices[`rentabilidad${key}` as keyof PricesRow] ?? 0)}
+                                        </span>
+                                        {v.fractionEnabled && (v.fractions ?? []).length > 0 && (
+                                          <span className="text-xs tabular-nums text-[#FFA901]">
+                                            {((v.fractionPrices ?? emptyPrices())[`rentabilidad${key}` as keyof PricesRow] ?? "") === ""
+                                              ? ""
+                                              : formatDecimal((v.fractionPrices ?? emptyPrices())[`rentabilidad${key}` as keyof PricesRow] ?? 0)}
+                                          </span>
+                                        )}
+                                      </div>
                                     </TableCell>
-                                    <TableCell className="py-0.5 px-1 min-w-[5rem]">
-                                      <span className="text-xs text-slate-600 tabular-nums">
-                                        {(v.prices[`rentabilidadIncIva${key}` as keyof PricesRow] ?? "") === ""
-                                          ? ""
-                                          : formatDecimal(v.prices[`rentabilidadIncIva${key}` as keyof PricesRow] ?? 0)}
-                                      </span>
+                                    <TableCell className="py-0.5 px-1 min-w-[5rem] align-top">
+                                      <div className="flex flex-col gap-0.5">
+                                        <span className="text-xs text-slate-600 tabular-nums">
+                                          {(v.prices[`rentabilidadIncIva${key}` as keyof PricesRow] ?? "") === ""
+                                            ? ""
+                                            : formatDecimal(v.prices[`rentabilidadIncIva${key}` as keyof PricesRow] ?? 0)}
+                                        </span>
+                                        {v.fractionEnabled && (v.fractions ?? []).length > 0 && (
+                                          <span className="text-xs tabular-nums text-[#FFA901]">
+                                            {((v.fractionPrices ?? emptyPrices())[`rentabilidadIncIva${key}` as keyof PricesRow] ?? "") === ""
+                                              ? ""
+                                              : formatDecimal((v.fractionPrices ?? emptyPrices())[`rentabilidadIncIva${key}` as keyof PricesRow] ?? 0)}
+                                          </span>
+                                        )}
+                                      </div>
                                     </TableCell>
                                   </TableRow>
                                 ))}

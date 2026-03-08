@@ -13,16 +13,19 @@ export class CompaniesController {
   constructor(private readonly companiesService: CompaniesService) {}
 
   @Post()
+  @UseGuards(JwtAuthGuard, SuperAdminGuard)
   create(@Body() createCompanyDto: CreateCompanyDto) {
     return this.companiesService.create(createCompanyDto);
   }
 
   @Get()
+  @UseGuards(JwtAuthGuard, SuperAdminGuard)
   findAll() {
     return this.companiesService.findAll();
   }
 
   @Get(':id')
+  @UseGuards(JwtAuthGuard)
   findOne(@Param('id') id: string) {
     return this.companiesService.findOne(id);
   }
@@ -44,6 +47,7 @@ export class CompaniesController {
   }
 
   @Delete(':id')
+  @UseGuards(JwtAuthGuard, SuperAdminGuard)
   remove(@Param('id') id: string) {
     return this.companiesService.remove(id);
   }

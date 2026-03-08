@@ -98,10 +98,13 @@ export default function LoginPage() {
       } else {
         Cookies.set("token", data.access_token, { expires: 1 });
         localStorage.setItem("user", JSON.stringify(data.user));
-        const target =
+        const redirectTo = searchParams.get("redirect");
+        const defaultTarget =
           data.user?.companyId == null || data.user?.companyId === ""
             ? "/dashboard/admin"
             : `/dashboard/${data.user.companyId}`;
+        const target =
+          redirectTo && redirectTo.startsWith("/dashboard") ? redirectTo : defaultTarget;
         router.push(target);
       }
     } catch (err) {
@@ -135,10 +138,13 @@ export default function LoginPage() {
 
       Cookies.set("token", data.access_token, { expires: 1 });
       localStorage.setItem("user", JSON.stringify(data.user));
-      const target =
+      const redirectTo = searchParams.get("redirect");
+      const defaultTarget =
         data.user?.companyId == null || data.user?.companyId === ""
           ? "/dashboard/admin"
           : `/dashboard/${data.user.companyId}`;
+      const target =
+        redirectTo && redirectTo.startsWith("/dashboard") ? redirectTo : defaultTarget;
       router.push(target);
     } catch (err) {
       setError(
