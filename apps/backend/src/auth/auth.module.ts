@@ -18,13 +18,13 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
     RolesModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
+      global: true,
       imports: [ConfigModule],
-      useFactory: (config: ConfigService) => ({
-        global: true,
-        secret: config.getOrThrow<string>('JWT_SECRET'),
-        signOptions: { expiresIn: '1d' },
-      }),
       inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        secret: config.getOrThrow<string>('JWT_SECRET'),
+        signOptions: { expiresIn: '8h' },
+      }),
     }),
   ],
   controllers: [AuthController],

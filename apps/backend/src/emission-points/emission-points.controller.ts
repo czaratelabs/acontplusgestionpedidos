@@ -1,9 +1,14 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards } from '@nestjs/common';
 import { EmissionPointsService } from './emission-points.service';
 import { CreateEmissionPointDto } from './dto/create-emission-point.dto';
 import { UpdateEmissionPointDto } from './dto/update-emission-point.dto';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { ModuleEnabledGuard } from '../common/guards/module-enabled.guard';
+import { ModuleEnabled } from '../common/decorators/module-enabled.decorator';
 
 @Controller('emission-points')
+@UseGuards(JwtAuthGuard, ModuleEnabledGuard)
+@ModuleEnabled('admin_establishments')
 export class EmissionPointsController {
   constructor(private readonly emissionPointsService: EmissionPointsService) {}
 

@@ -4,7 +4,6 @@ process.env.TZ = 'America/Guayaquil';
 import { NestFactory } from '@nestjs/core';
 import { join } from 'path';
 import { ValidationPipe, Logger } from '@nestjs/common';
-import helmet from 'helmet';
 import { ClsService } from './common/cls/cls-context.service';
 import { DataSource } from 'typeorm';
 import { AppModule } from './app.module';
@@ -12,6 +11,7 @@ import { setClsServiceForAudit } from './common/audit-context';
 import { HttpExceptionFilter } from './common/http-exception.filter';
 import { AuditSubscriber } from './audit-logs/audit.subscriber';
 import cookieParser from 'cookie-parser';
+import helmet from 'helmet';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
@@ -44,18 +44,22 @@ async function bootstrap() {
       transformOptions: { enableImplicitConversion: true },
     }),
   );
+  app.use(helmet());
   app.use(cookieParser());
-  app.use(helmet({ crossOriginResourcePolicy: false })); // Permitir carga de recursos cross-origin (frontend)
 
   // Static files for uploads (article images)
   const express = await import('express');
   app.use('/uploads', express.static(join(process.cwd(), 'uploads')));
 
-  // CORS: configurable por entorno (CORS_ORIGIN separado por comas)
-  const corsOrigin = process.env.CORS_ORIGIN
-    ? process.env.CORS_ORIGIN.split(',').map((o) => o.trim()).filter(Boolean)
+  // CORS configurable por entorno — separar múltiples orígenes con coma en CORS_ORIGIN
+  const corsOrigins = process.env.CORS_ORIGIN
+    ? process.env.CORS_ORIGIN.split(',').map((o) => o.trim())
     : ['http://localhost:3000', 'http://127.0.0.1:3000'];
-  app.enableCors({ origin: corsOrigin, credentials: true });
+
+  app.enableCors({
+    origin: corsOrigins,
+    credentials: true,
+  });
 
   const port = process.env.PORT ?? 3001;
   await app.listen(port);
