@@ -5,8 +5,7 @@ import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { toZonedTime } from "date-fns-tz";
 import { useCompanyTimezone } from "./use-timezone";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+import { apiGet } from "@/lib/api-client";
 const SYSTEM_DATE_FORMAT_KEY = "SYSTEM_DATE_FORMAT";
 const DEFAULT_DATE_FORMAT = "DD/MM/YYYY";
 
@@ -59,11 +58,10 @@ export function useDateFormat(companyId: string | undefined): UseDateFormatResul
       return;
     }
     setLoadingFormat(true);
-    const url = `${API_BASE}/system-settings/${SYSTEM_DATE_FORMAT_KEY}?companyId=${encodeURIComponent(companyId)}`;
+    const url = `/system-settings/${SYSTEM_DATE_FORMAT_KEY}?companyId=${encodeURIComponent(companyId)}`;
     const controller = new AbortController();
-    fetch(url, { credentials: "include", signal: controller.signal })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data: { value?: string } | null) => {
+    apiGet<{ value?: string }>(url, { signal: controller.signal })
+      .then((data) => {
         const v = data?.value?.trim();
         if (v && FORMAT_MAP[v]) setDateFormat(v);
       })

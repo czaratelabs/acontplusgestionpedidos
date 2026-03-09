@@ -26,9 +26,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-
-const LOGIN_URL = "/api/auth/login";
-const SELECT_COMPANY_URL = "/api/auth/select-company";
+import { apiPost } from "@/lib/api-client";
 
 const formSchema = z.object({
   email: z.string().email("Correo electrónico inválido"),
@@ -76,18 +74,9 @@ export default function LoginPage() {
     setError("");
 
     try {
-      const res = await fetch(LOGIN_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(values),
+      const data = await apiPost<Record<string, unknown>>("/api/auth/login", values, {
+        skip401Redirect: true,
       });
-
-      const data = await res.json().catch(() => ({}));
-
-      if (!res.ok) {
-        const message = data?.message ?? `Error ${res.status}`;
-        throw new Error(message);
-      }
 
       if (data.step === "select_company" && data.companies?.length > 1) {
         setCompanies(data.companies);
@@ -120,21 +109,14 @@ export default function LoginPage() {
     setError("");
 
     try {
-      const res = await fetch(SELECT_COMPANY_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${sessionToken}`,
-        },
-        body: JSON.stringify({ companyId: selectedCompanyId }),
-      });
-
-      const data = await res.json().catch(() => ({}));
-
-      if (!res.ok) {
-        const message = data?.message ?? "Error al seleccionar empresa";
-        throw new Error(message);
-      }
+      const data = await apiPost<Record<string, unknown>>(
+        "/api/auth/select-company",
+        { companyId: selectedCompanyId },
+        {
+          skip401Redirect: true,
+          headers: { Authorization: `Bearer ${sessionToken}` },
+        }
+      );
 
       Cookies.set("token", data.access_token, { expires: 1 });
       localStorage.setItem("user", JSON.stringify(data.user));

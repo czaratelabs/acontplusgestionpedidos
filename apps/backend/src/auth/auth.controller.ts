@@ -8,16 +8,19 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
+import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { Public } from './decorators/public.decorator';
 
+@ApiTags('auth')
 @Controller('auth')
 export class AuthController {
   constructor(private authService: AuthService) {}
 
   @Public()
   @Throttle({ default: { ttl: 60000, limit: 5 } })
+  @ApiOperation({ summary: 'Iniciar sesión' })
   @HttpCode(HttpStatus.OK)
   @Post('login')
   signIn(@Body() signInDto: Record<string, any>) {
@@ -25,6 +28,7 @@ export class AuthController {
   }
 
   @Public()
+  @ApiOperation({ summary: 'Seleccionar empresa activa' })
   @HttpCode(HttpStatus.OK)
   @Post('select-company')
   async selectCompany(
@@ -40,6 +44,7 @@ export class AuthController {
   }
 
   @Public()
+  @ApiOperation({ summary: 'Registrar usuario y empresa' })
   @Post('register')
   register(@Body() registerDto: RegisterDto) {
     return this.authService.register(registerDto);

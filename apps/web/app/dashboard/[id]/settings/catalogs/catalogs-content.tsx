@@ -30,8 +30,7 @@ import {
 } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useToast } from "@/components/ui/use-toast";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+import { apiPost, apiPatch, apiDelete } from "@/lib/api-client";
 
 type CatalogItem = { id: string; name: string };
 type CategoryItem = CatalogItem & {
@@ -80,7 +79,7 @@ function CatalogTable({
   const { toast } = useToast();
   const config = CATALOG_CONFIG[catalogKey];
 
-  const basePath = `${API_BASE}/articles/catalogs/company/${companyId}/${config.path}`;
+  const basePath = `/articles/catalogs/company/${companyId}/${config.path}`;
 
   const isCategories = catalogKey === "categories";
 
@@ -116,28 +115,10 @@ function CatalogTable({
         if (siglas.trim()) body.siglas = siglas.trim().toUpperCase();
       }
       if (editing) {
-        const res = await fetch(`${basePath}/${editing.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-          credentials: "include",
-        });
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}));
-          throw new Error(err.message ?? "Error al actualizar");
-        }
+        await apiPatch(`${basePath}/${editing.id}`, body);
         toast({ title: "Actualizado", description: `La ${config.title} se ha actualizado.` });
       } else {
-        const res = await fetch(basePath, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-          credentials: "include",
-        });
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}));
-          throw new Error(err.message ?? "Error al crear");
-        }
+        await apiPost(basePath, body);
         toast({ title: "Creado", description: `La ${config.title} se ha creado.` });
       }
       handleDialogClose(false);
@@ -157,14 +138,7 @@ function CatalogTable({
     if (!deleteTarget) return;
     setDeleting(true);
     try {
-      const res = await fetch(`${basePath}/${deleteTarget.id}`, {
-        method: "DELETE",
-        credentials: "include",
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.message ?? "Error al eliminar");
-      }
+      await apiDelete(`${basePath}/${deleteTarget.id}`);
       toast({ title: "Eliminado", description: `La ${config.title} se ha eliminado.` });
       setDeleteTarget(null);
       onRefresh();

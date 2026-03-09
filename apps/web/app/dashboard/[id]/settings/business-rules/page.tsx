@@ -8,8 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/use-toast";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+import { apiFetch, apiPatch } from "@/lib/api-client";
 const RULE_INVENTORY_PREVENT_NEGATIVE_STOCK = "INVENTORY_PREVENT_NEGATIVE_STOCK";
 
 type BusinessRule = {
@@ -51,20 +50,21 @@ export default function BusinessRulesPage({
     }
 
     let cancelled = false;
-    fetch(`${API_BASE}/business-rules?companyId=${encodeURIComponent(companyId)}`, {
-      credentials: "include",
-    })
-      .then((res) => {
+    apiFetch(`/business-rules?companyId=${encodeURIComponent(companyId)}`)
+      .then(async (res) => {
         if (res.status === 403) {
-          toast({
-            title: "Acceso denegado",
-            description: "Este módulo no está activo en tu plan actual.",
-            variant: "destructive",
-          });
-          router.replace(`/dashboard/${companyId}`);
+          if (!cancelled) {
+            toast({
+              title: "Acceso denegado",
+              description: "Este módulo no está activo en tu plan actual.",
+              variant: "destructive",
+            });
+            router.replace(`/dashboard/${companyId}`);
+          }
           return null;
         }
-        return res.ok ? res.json() : [];
+        const data = res.ok ? await res.json() : [];
+        return data as BusinessRule[] | null;
       })
       .then((data: BusinessRule[] | null) => {
         if (cancelled || data === null) return;
@@ -86,17 +86,10 @@ export default function BusinessRulesPage({
   async function onTogglePreventNegativeStock(checked: boolean) {
     setSaving(true);
     try {
-      const res = await fetch(
-        `${API_BASE}/business-rules/${companyId}/${RULE_INVENTORY_PREVENT_NEGATIVE_STOCK}`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ isEnabled: checked }),
-          credentials: "include",
-        }
+      await apiPatch(
+        `/business-rules/${companyId}/${RULE_INVENTORY_PREVENT_NEGATIVE_STOCK}`,
+        { isEnabled: checked }
       );
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.message || "Error al guardar");
       setPreventNegativeStock(checked);
       router.refresh();
       toast({

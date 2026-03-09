@@ -33,7 +33,7 @@ export class AuditLogsService {
     companyId: string | undefined,
     page = 1,
     limit = 20,
-  ): Promise<{ data: AuditLogWithSafeUser[]; total: number }> {
+  ): Promise<{ data: AuditLogWithSafeUser[]; total: number; page: number; limit: number }> {
     const where = companyId ? { company_id: companyId } : {};
     const [rows, total] = await this.auditLogRepo.findAndCount({
       where,
@@ -50,7 +50,7 @@ export class AuditLogsService {
         : null;
       return safe;
     });
-    return { data, total };
+    return { data, total, page, limit };
   }
 
   async findAllByCompany(

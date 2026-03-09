@@ -88,16 +88,17 @@ export async function getCompanyUserLimitInfo(companyId: string): Promise<{
   }
 }
 
-// Obtener usuarios de una empresa
+// Obtener usuarios de una empresa — paginación: page=1, limit=500
 export async function getCompanyUsers(companyId: string) {
   try {
     const authHeaders = await getAuthHeaders();
-    const res = await fetch(`${API_BASE}/users/company/${companyId}`, {
+    const res = await fetch(`${API_BASE}/users/company/${companyId}?page=1&limit=500`, {
       cache: "no-store",
       headers: authHeaders,
     });
     if (!res.ok) return [];
-    return res.json();
+    const json = await res.json();
+    return json?.data ?? (Array.isArray(json) ? json : []);
   } catch (error) {
     console.error("Error fetching users:", error);
     return [];
@@ -137,16 +138,17 @@ export async function getEstablishments(companyId: string) {
   }
 }
 
-// Artículos (Parent-Variant)
+// Artículos (Parent-Variant) — paginación: page=1, limit=500 para cargar lista completa
 export async function getArticles(companyId: string) {
   try {
     const authHeaders = await getAuthHeaders();
-    const res = await fetch(`${API_BASE}/articles/company/${companyId}`, {
+    const res = await fetch(`${API_BASE}/articles/company/${companyId}?page=1&limit=500`, {
       cache: "no-store",
       headers: authHeaders,
     });
     if (!res.ok) return [];
-    return res.json();
+    const json = await res.json();
+    return json?.data ?? (Array.isArray(json) ? json : []);
   } catch {
     return [];
   }

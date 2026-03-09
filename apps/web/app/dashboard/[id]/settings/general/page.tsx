@@ -16,8 +16,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
 import { CURRENCY_OPTIONS } from "@/lib/currency";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+import { apiGet, apiPatch } from "@/lib/api-client";
 
 const SYSTEM_TIMEZONE_KEY = "SYSTEM_TIMEZONE";
 const SYSTEM_CURRENCY_KEY = "SYSTEM_CURRENCY";
@@ -98,11 +97,10 @@ export default function GeneralSettingsPage({
   useEffect(() => {
     if (!isAdminOrOwnerForEffect || !companyIdStable) return;
     setLoadingTimezone(true);
-    const url = `${API_BASE}/system-settings/${SYSTEM_TIMEZONE_KEY}?companyId=${encodeURIComponent(companyIdStable)}`;
+    const url = `/system-settings/${SYSTEM_TIMEZONE_KEY}?companyId=${encodeURIComponent(companyIdStable)}`;
     const controller = new AbortController();
-    fetch(url, { credentials: "include", signal: controller.signal })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data: { value?: string } | null) => {
+    apiGet<{ value?: string }>(url, { signal: controller.signal })
+      .then((data) => {
         if (data?.value) setSystemTimezone(data.value);
       })
       .catch(() => {})
@@ -113,11 +111,10 @@ export default function GeneralSettingsPage({
   useEffect(() => {
     if (!isAdminOrOwnerForEffect || !companyIdStable) return;
     setLoadingCurrency(true);
-    const url = `${API_BASE}/system-settings/${SYSTEM_CURRENCY_KEY}?companyId=${encodeURIComponent(companyIdStable)}`;
+    const url = `/system-settings/${SYSTEM_CURRENCY_KEY}?companyId=${encodeURIComponent(companyIdStable)}`;
     const controller = new AbortController();
-    fetch(url, { credentials: "include", signal: controller.signal })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data: { value?: string } | null) => {
+    apiGet<{ value?: string }>(url, { signal: controller.signal })
+      .then((data) => {
         if (data?.value) setSystemCurrency(data.value);
       })
       .catch(() => {})
@@ -128,11 +125,10 @@ export default function GeneralSettingsPage({
   useEffect(() => {
     if (!isAdminOrOwnerForEffect || !companyIdStable) return;
     setLoadingDateFormat(true);
-    const url = `${API_BASE}/system-settings/${SYSTEM_DATE_FORMAT_KEY}?companyId=${encodeURIComponent(companyIdStable)}`;
+    const url = `/system-settings/${SYSTEM_DATE_FORMAT_KEY}?companyId=${encodeURIComponent(companyIdStable)}`;
     const controller = new AbortController();
-    fetch(url, { credentials: "include", signal: controller.signal })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data: { value?: string } | null) => {
+    apiGet<{ value?: string }>(url, { signal: controller.signal })
+      .then((data) => {
         if (data?.value) setSystemDateFormat(data.value);
       })
       .catch(() => {})
@@ -143,14 +139,7 @@ export default function GeneralSettingsPage({
   async function onSaveTimezone(value: string) {
     setSavingTimezone(true);
     try {
-      const res = await fetch(`${API_BASE}/system-settings/${SYSTEM_TIMEZONE_KEY}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ companyId, value }),
-        credentials: "include",
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.message || "Error al guardar");
+      await apiPatch(`/system-settings/${SYSTEM_TIMEZONE_KEY}`, { companyId, value });
       setSystemTimezone(value);
       router.refresh();
       toast({
@@ -172,14 +161,7 @@ export default function GeneralSettingsPage({
   async function onSaveCurrency(value: string) {
     setSavingCurrency(true);
     try {
-      const res = await fetch(`${API_BASE}/system-settings/${SYSTEM_CURRENCY_KEY}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ companyId, value }),
-        credentials: "include",
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.message || "Error al guardar");
+      await apiPatch(`/system-settings/${SYSTEM_CURRENCY_KEY}`, { companyId, value });
       setSystemCurrency(value);
       router.refresh();
       toast({
@@ -201,14 +183,7 @@ export default function GeneralSettingsPage({
   async function onSaveDateFormat(value: string) {
     setSavingDateFormat(true);
     try {
-      const res = await fetch(`${API_BASE}/system-settings/${SYSTEM_DATE_FORMAT_KEY}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ companyId, value }),
-        credentials: "include",
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.message || "Error al guardar");
+      await apiPatch(`/system-settings/${SYSTEM_DATE_FORMAT_KEY}`, { companyId, value });
       setSystemDateFormat(value);
       router.refresh();
       toast({

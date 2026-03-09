@@ -11,8 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
 import { Plus, Trash2, X } from "lucide-react";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+import { apiGet, apiPatch } from "@/lib/api-client";
 
 const TARIFF_NAMES_KEY = "TARIFF_NAMES";
 const TARIFF_PROFITABILITY_KEY = "TARIFF_PROFITABILITY";
@@ -98,11 +97,10 @@ export default function TariffsSettingsPage({
   useEffect(() => {
     if (!isAdminOrOwnerForEffect || !companyIdStable) return;
     setLoadingTariffNames(true);
-    const url = `${API_BASE}/system-settings/${TARIFF_NAMES_KEY}?companyId=${encodeURIComponent(companyIdStable)}`;
+    const url = `/system-settings/${TARIFF_NAMES_KEY}?companyId=${encodeURIComponent(companyIdStable)}`;
     const controller = new AbortController();
-    fetch(url, { credentials: "include", signal: controller.signal })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data: { value?: string } | null) => {
+    apiGet<{ value?: string }>(url, { signal: controller.signal })
+      .then((data) => {
         if (data?.value) {
           try {
             const parsed = JSON.parse(data.value) as Record<string, string>;
@@ -121,11 +119,10 @@ export default function TariffsSettingsPage({
   useEffect(() => {
     if (!isAdminOrOwnerForEffect || !companyIdStable) return;
     setLoadingProfitability(true);
-    const url = `${API_BASE}/system-settings/${TARIFF_PROFITABILITY_KEY}?companyId=${encodeURIComponent(companyIdStable)}`;
+    const url = `/system-settings/${TARIFF_PROFITABILITY_KEY}?companyId=${encodeURIComponent(companyIdStable)}`;
     const controller = new AbortController();
-    fetch(url, { credentials: "include", signal: controller.signal })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data: { value?: string } | null) => {
+    apiGet<{ value?: string }>(url, { signal: controller.signal })
+      .then((data) => {
         if (data?.value) {
           try {
             const parsed = JSON.parse(data.value) as TariffProfitabilityConfig;
@@ -145,10 +142,7 @@ export default function TariffsSettingsPage({
 
   useEffect(() => {
     if (!companyIdStable) return;
-    fetch(`${API_BASE}/articles/catalogs/company/${companyIdStable}/categories`, {
-      credentials: "include",
-    })
-      .then((res) => (res.ok ? res.json() : []))
+    apiGet<Category[]>(`/articles/catalogs/company/${companyIdStable}/categories`)
       .then((data) => setCategories(Array.isArray(data) ? data : []))
       .catch(() => setCategories([]));
   }, [companyIdStable]);
@@ -158,14 +152,7 @@ export default function TariffsSettingsPage({
     try {
       const payload = { ...DEFAULT_TARIFF_NAMES, ...tariffNames };
       const value = JSON.stringify(payload);
-      const res = await fetch(`${API_BASE}/system-settings/${TARIFF_NAMES_KEY}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ companyId, value }),
-        credentials: "include",
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.message || "Error al guardar");
+      await apiPatch(`/system-settings/${TARIFF_NAMES_KEY}`, { companyId, value });
       router.refresh();
       toast({
         title: "Éxito",
@@ -196,14 +183,7 @@ export default function TariffsSettingsPage({
         })),
       };
       const value = JSON.stringify(config);
-      const res = await fetch(`${API_BASE}/system-settings/${TARIFF_PROFITABILITY_KEY}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ companyId, value }),
-        credentials: "include",
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.message || "Error al guardar");
+      await apiPatch(`/system-settings/${TARIFF_PROFITABILITY_KEY}`, { companyId, value });
       router.refresh();
       toast({
         title: "Éxito",

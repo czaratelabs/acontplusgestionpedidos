@@ -5,8 +5,7 @@ import { useRouter } from "next/navigation";
 import Cookies from "js-cookie";
 import { jwtDecode } from "jwt-decode";
 import { TaxesTable } from "./taxes-table";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+import { apiGet } from "@/lib/api-client";
 
 type Tax = {
   id: string;
@@ -45,10 +44,7 @@ export default function TaxesSettingsPage({
     }
 
     let cancelled = false;
-    fetch(`${API_BASE}/taxes/company/${encodeURIComponent(companyId)}`, {
-      credentials: "include",
-    })
-      .then((res) => (res.ok ? res.json() : []))
+    apiGet<Tax[] | unknown>(`/taxes/company/${encodeURIComponent(companyId)}`)
       .then((data) => {
         if (!cancelled && Array.isArray(data)) setTaxes(data);
       })
@@ -65,11 +61,9 @@ export default function TaxesSettingsPage({
   }, [companyId, router]);
 
   const refreshTaxes = () => {
-    fetch(`${API_BASE}/taxes/company/${encodeURIComponent(companyId)}`, {
-      credentials: "include",
-    })
-      .then((res) => (res.ok ? res.json() : []))
-      .then((data) => setTaxes(Array.isArray(data) ? data : []));
+    apiGet<Tax[]>(`/taxes/company/${encodeURIComponent(companyId)}`)
+      .then((data) => setTaxes(Array.isArray(data) ? data : []))
+      .catch(() => setTaxes([]));
   };
 
   return (

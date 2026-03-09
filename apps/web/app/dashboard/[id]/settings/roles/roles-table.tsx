@@ -22,8 +22,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/use-toast";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+import { apiDelete, apiPatch } from "@/lib/api-client";
 
 type RoleRow = {
   id: string;
@@ -75,12 +74,7 @@ export function RolesTableClient({
     if (!inactivateTarget) return;
     setInactivating(true);
     try {
-      const res = await fetch(`${API_BASE}/roles/${inactivateTarget.id}`, {
-        method: "DELETE",
-        credentials: "include",
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.message || "Error al inactivar");
+      await apiDelete(`/roles/${inactivateTarget.id}`);
       setInactivateTarget(null);
       onRefresh();
       toast({
@@ -118,12 +112,7 @@ export function RolesTableClient({
   async function handleActivate(role: RoleRow) {
     setActivatingId(role.id);
     try {
-      const res = await fetch(`${API_BASE}/roles/${role.id}/activate`, {
-        method: "PATCH",
-        credentials: "include",
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.message || "Error al activar");
+      await apiPatch(`/roles/${role.id}/activate`);
       onRefresh();
       toast({
         title: "Éxito",

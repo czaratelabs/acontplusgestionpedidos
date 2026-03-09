@@ -25,8 +25,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+import { apiPost, apiPatch, apiFetch, API_BASE } from "@/lib/api-client";
 
 export const CONSUMIDOR_FINAL_TAX_ID = "9999999999999";
 
@@ -355,9 +354,8 @@ export function ContactDialog({
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(
-          `${API_BASE}/contacts/company/${companyId}/lookup?taxId=${encodeURIComponent(CONSUMIDOR_FINAL_TAX_ID)}`,
-          { credentials: "include" }
+        const res = await apiFetch(
+          `/contacts/company/${companyId}/lookup?taxId=${encodeURIComponent(CONSUMIDOR_FINAL_TAX_ID)}`
         );
         if (cancelled) return;
         setConsumidorFinalAlreadyExists(res.ok);
@@ -399,9 +397,8 @@ export function ContactDialog({
     if (!taxId || taxId.length < 10) return;
     setLookupLoading(true);
     try {
-      const res = await fetch(
-        `${API_BASE}/contacts/company/${companyId}/lookup?taxId=${encodeURIComponent(taxId)}`,
-        { credentials: "include" }
+      const res = await apiFetch(
+        `/contacts/company/${companyId}/lookup?taxId=${encodeURIComponent(taxId)}`
       );
       if (res.ok) {
         const contact = (await res.json()) as ContactForDialog;
@@ -489,23 +486,10 @@ export function ContactDialog({
       };
 
       const effectiveId = initialData?.id ?? resolvedContact?.id;
-      const url = effectiveId
-        ? `${API_BASE}/contacts/${effectiveId}`
-        : `${API_BASE}/contacts/company/${companyId}`;
-      const method = effectiveId ? "PATCH" : "POST";
-
-      const res = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-        credentials: "include",
-      });
-
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        const msg = data.message;
-        const text = Array.isArray(msg) ? msg[0] : msg;
-        throw new Error(typeof text === "string" ? text : "Error al guardar");
+      if (effectiveId) {
+        await apiPatch(`/contacts/${effectiveId}`, payload);
+      } else {
+        await apiPost(`/contacts/company/${companyId}`, payload);
       }
 
       setOpen(false);

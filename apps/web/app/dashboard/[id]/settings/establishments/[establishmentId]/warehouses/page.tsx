@@ -23,6 +23,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
+import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/api-client";
 
 const formSchema = z.object({
   name: z.string().min(2, "El nombre es requerido (mín. 2 caracteres)"),
@@ -37,8 +38,6 @@ type WarehouseItem = {
   created_at: string;
   updated_at: string;
 };
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
 export default function WarehousesPage({
   params,
@@ -71,13 +70,8 @@ export default function WarehousesPage({
 
   async function fetchWarehouses() {
     try {
-      const res = await fetch(
-        `${API_BASE}/warehouses/establishment/${establishmentId}`,
-        { credentials: "include" }
-      );
-      if (!res.ok) throw new Error("Error cargando almacenes");
-      const data = await res.json();
-      setWarehouses(data);
+      const data = await apiGet<WarehouseItem[]>(`/warehouses/establishment/${establishmentId}`);
+      setWarehouses(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error(err);
       setWarehouses([]);
@@ -121,12 +115,7 @@ export default function WarehousesPage({
     if (!inactivateTarget) return;
     setInactivating(true);
     try {
-      const res = await fetch(`${API_BASE}/warehouses/${inactivateTarget.id}`, {
-        method: "DELETE",
-        credentials: "include",
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.message || "Error al inactivar");
+      await apiDelete(`/warehouses/${inactivateTarget.id}`);
       setInactivateTarget(null);
       await fetchWarehouses();
       router.refresh();
@@ -150,12 +139,7 @@ export default function WarehousesPage({
   async function handleActivate(warehouse: WarehouseItem) {
     setActivatingId(warehouse.id);
     try {
-      const res = await fetch(`${API_BASE}/warehouses/${warehouse.id}/activate`, {
-        method: "PATCH",
-        credentials: "include",
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.message || "Error al activar");
+      await apiPatch(`/warehouses/${warehouse.id}/activate`);
       await fetchWarehouses();
       router.refresh();
       getCompanyWarehouseLimitInfoClient(companyId).then(setLimitInfo);
@@ -182,21 +166,10 @@ export default function WarehousesPage({
         name: values.name.trim(),
         description: values.description?.trim() || undefined,
       };
-      const url = editingWarehouse
-        ? `${API_BASE}/warehouses/${editingWarehouse.id}`
-        : `${API_BASE}/warehouses/establishment/${establishmentId}`;
-      const method = editingWarehouse ? "PATCH" : "POST";
-
-      const res = await fetch(url, {
-        method,
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        const msg = Array.isArray(data.message) ? data.message[0] : (data.message ?? "Error al guardar");
-        throw new Error(typeof msg === "string" ? msg : "Error al guardar");
+      if (editingWarehouse) {
+        await apiPatch(`/warehouses/${editingWarehouse.id}`, payload);
+      } else {
+        await apiPost(`/warehouses/establishment/${establishmentId}`, payload);
       }
       setOpen(false);
       setEditingWarehouse(null);

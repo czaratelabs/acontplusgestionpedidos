@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/use-toast";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { apiDelete } from "@/lib/api-client";
 
 type UserRow = {
   id: string;
@@ -32,8 +33,6 @@ type UserRow = {
   email: string;
   role: string;
 };
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
 type LimitInfo = {
   totalCount: number;
@@ -94,12 +93,7 @@ export function UsersTableClient({
     if (!removeTarget) return;
     setRemoving(true);
     try {
-      const res = await fetch(
-        `${API_BASE}/users/company/${companyId}/user/${removeTarget.id}`,
-        { method: "DELETE", credentials: "include" }
-      );
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.message || "Error al remover");
+      await apiDelete(`/users/company/${companyId}/user/${removeTarget.id}`);
       setRemoveTarget(null);
       toast({
         title: "Éxito",

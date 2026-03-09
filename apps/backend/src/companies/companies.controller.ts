@@ -1,4 +1,5 @@
 import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { CompaniesService } from './companies.service';
 import { CreateCompanyDto } from './dto/create-company.dto';
 import { UpdateCompanyDto } from './dto/update-company.dto';
@@ -8,6 +9,7 @@ import { SuperAdminGuard } from '../common/guards/super-admin.guard';
 import { ModuleEnabledGuard } from '../common/guards/module-enabled.guard';
 import { ModuleEnabled } from '../common/decorators/module-enabled.decorator';
 
+@ApiTags('companies')
 @Controller('companies')
 @UseGuards(JwtAuthGuard, SuperAdminGuard)
 export class CompaniesController {

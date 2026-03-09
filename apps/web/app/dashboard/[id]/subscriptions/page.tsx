@@ -26,6 +26,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/use-toast";
+import { apiGet, apiPatch } from "@/lib/api-client";
 
 const MODULE_LABELS: Record<string, string> = {
   audit: "Auditoría",
@@ -65,8 +66,6 @@ type Plan = {
   isActive: boolean;
 };
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
-
 export default function SubscriptionsPage({
   params,
 }: {
@@ -87,8 +86,7 @@ export default function SubscriptionsPage({
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`${API_BASE}/subscription-plans`, { credentials: "include" })
-      .then((res) => (res.ok ? res.json() : []))
+    apiGet<Plan[] | unknown[]>("/subscription-plans")
       .then((data) => {
         if (!cancelled && Array.isArray(data)) setPlans(data);
       })
@@ -131,20 +129,13 @@ export default function SubscriptionsPage({
     }
     setSaving(true);
     try {
-      const res = await fetch(`${API_BASE}/subscription-plans/${editingPlan.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: formName.trim(),
-          price: parseFloat(formPrice) || 0,
-          implementationFee: parseFloat(formImplementationFee) || 0,
-          limits: formLimits,
-          modules: formModules,
-        }),
-        credentials: "include",
+      const data = await apiPatch<Plan>(`/subscription-plans/${editingPlan.id}`, {
+        name: formName.trim(),
+        price: parseFloat(formPrice) || 0,
+        implementationFee: parseFloat(formImplementationFee) || 0,
+        limits: formLimits,
+        modules: formModules,
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.message || "Error al guardar");
       setPlans((prev) =>
         prev.map((p) => (p.id === editingPlan.id ? { ...p, ...data } : p))
       );

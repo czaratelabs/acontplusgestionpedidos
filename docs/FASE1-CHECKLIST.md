@@ -42,7 +42,7 @@
 
 | # | Acción | Estado |
 |---|--------|--------|
-| 1.1.12 | Crear o actualizar `.env` local con `JWT_SECRET=<cadena-aleatoria-256-bits>` | ☐ |
+| 1.1.12 | Crear o actualizar `.env` local con `JWT_SECRET=<cadena-aleatoria-256-bits>` | ☑ |
 
 ---
 
@@ -62,18 +62,18 @@
 
 | # | Acción | Estado |
 |---|--------|--------|
-| 1.2.6 | Si usas enfoque global: registrar `APP_GUARD` con `JwtAuthGuard` | ☐ |
-| 1.2.7 | Si usas enfoque global: marcar rutas públicas con `@Public()` | ☐ |
-| 1.2.8 | Si NO usas global: verificar que todos los controllers sensibles tengan guards explícitos | ☐ |
+| 1.2.6 | Si usas enfoque global: registrar `APP_GUARD` con `JwtAuthGuard` | — N/A (enfoque por controller) |
+| 1.2.7 | Si usas enfoque global: marcar rutas públicas con `@Public()` | — N/A |
+| 1.2.8 | Si NO usas global: verificar que todos los controllers sensibles tengan guards explícitos | ☑ |
 
 ### Verificación de otros controllers
 
 | # | Archivo | Acción | Estado |
 |---|---------|--------|--------|
-| 1.2.9 | `auth/auth.controller.ts` | Confirmar que login, register, select-company tienen `@Public()` | ☐ |
-| 1.2.10 | `users/users.controller.ts` | Confirmar que todos los endpoints tienen JwtAuthGuard | ☐ |
-| 1.2.11 | `articles/articles.controller.ts` | Confirmar JwtAuthGuard | ☐ |
-| 1.2.12 | `contacts/contacts.controller.ts` | Confirmar JwtAuthGuard | ☐ |
+| 1.2.9 | `auth/auth.controller.ts` | Confirmar que login, register, select-company tienen `@Public()` | ☑ |
+| 1.2.10 | `users/users.controller.ts` | Confirmar que todos los endpoints tienen JwtAuthGuard | ☑ |
+| 1.2.11 | `articles/articles.controller.ts` | Confirmar JwtAuthGuard | ☑ |
+| 1.2.12 | `contacts/contacts.controller.ts` | Confirmar JwtAuthGuard | ☑ |
 
 ---
 
@@ -105,8 +105,8 @@
 
 | # | Acción | Estado |
 |---|--------|--------|
-| 1.3.8 | Importar `SkipThrottle` de `@nestjs/throttler` | ☐ |
-| 1.3.9 | Añadir `@SkipThrottle()` a endpoints de health (si existen) | ☐ |
+| 1.3.8 | Importar `SkipThrottle` de `@nestjs/throttler` | ☑ |
+| 1.3.9 | Añadir `@SkipThrottle()` a endpoints de health (si existen) | ☑ |
 
 ### `apps/backend/src/main.ts`
 

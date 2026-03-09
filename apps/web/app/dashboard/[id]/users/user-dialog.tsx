@@ -25,6 +25,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
+import { apiPost, apiPatch } from "@/lib/api-client";
 
 export type UserForDialog = {
   id: string;
@@ -32,8 +33,6 @@ export type UserForDialog = {
   email: string;
   role: string;
 };
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
 const formSchema = z.object({
   full_name: z.string().min(2, "El nombre es muy corto"),
@@ -135,22 +134,10 @@ export function UserDialog({ companyId, initialData = null, limitInfo = defaultL
         payload.password = pwd;
       }
 
-      const url = initialData
-        ? `${API_BASE}/users/company/${companyId}/user/${initialData.id}`
-        : `${API_BASE}/users/company/${companyId}`;
-      const method = initialData ? "PATCH" : "POST";
-
-      const res = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-        credentials: "include",
-      });
-
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        const msg = Array.isArray(data.message) ? data.message[0] : (data.message ?? "Error al guardar");
-        throw new Error(typeof msg === "string" ? msg : "Error al guardar");
+      if (initialData) {
+        await apiPatch(`/users/company/${companyId}/user/${initialData.id}`, payload);
+      } else {
+        await apiPost(`/users/company/${companyId}`, payload);
       }
 
       setOpen(false);

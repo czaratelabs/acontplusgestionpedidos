@@ -50,7 +50,7 @@ type Company = {
   updated_at: string;
 };
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+import { apiGet, apiPatch } from "@/lib/api-client";
 
 /** Mapa de claves del campo modules (subscription_plans) a etiquetas legibles */
 const MODULE_LABELS: Record<string, string> = {
@@ -105,12 +105,7 @@ export default function CompanySettingsPage({
     let cancelled = false;
     async function fetchCompany() {
       try {
-        const res = await fetch(`${API_BASE}/companies/${id}`, { credentials: "include" });
-        if (!res.ok) {
-          if (!cancelled) setErrorMessage("No se pudo cargar la empresa.");
-          return;
-        }
-        const data: Company = await res.json();
+        const data = await apiGet<Company>(`/companies/${id}`);
         if (!cancelled) {
           setCompany(data);
           reset({
@@ -147,16 +142,7 @@ export default function CompanySettingsPage({
         email: values.email?.trim() || undefined,
         logo_url: values.logo_url?.trim() || undefined,
       };
-      const res = await fetch(`${API_BASE}/companies/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-        credentials: "include",
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(data.message || "Error al guardar");
-      }
+      const data = await apiPatch<Company>(`/companies/${id}`, payload);
       setCompany(data);
       router.refresh();
       toast({

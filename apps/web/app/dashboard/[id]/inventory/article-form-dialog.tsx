@@ -55,8 +55,13 @@ import {
   costIncIvaToCost,
 } from "@/lib/cost-iva";
 import { roundToFive } from "@/lib/math.util";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+import {
+  apiGet,
+  apiPost,
+  apiPatch,
+  apiFetch,
+  API_BASE,
+} from "@/lib/api-client";
 
 const TARIFF_NAMES_KEY = "TARIFF_NAMES";
 const TARIFF_PROFITABILITY_KEY = "TARIFF_PROFITABILITY";
@@ -605,7 +610,7 @@ export function ArticleFormDialog({
         sku: String(vr.sku ?? ""),
         barcode: String(vr.barcode ?? ""),
         additionalBarcodes,
-        cost: formatDecimal(vr.cost ?? 0),
+        cost: formatDecimal(Number(vr.cost) || 0),
         colorId: String(vr.colorId ?? ""),
         sizeId: String(vr.sizeId ?? ""),
         flavorId: String(vr.flavorId ?? ""),
@@ -642,8 +647,8 @@ export function ArticleFormDialog({
     setLoading(true);
     try {
       if (effectiveArticleId) {
-        const res = await fetch(
-          `${API_BASE}/articles/${effectiveArticleId}/general?companyId=${encodeURIComponent(companyId)}`,
+        const res = await apiFetch(
+          `/articles/${effectiveArticleId}/general?companyId=${encodeURIComponent(companyId)}`,
           {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
@@ -665,8 +670,8 @@ export function ArticleFormDialog({
         router.refresh();
         toast({ title: "Datos generales actualizados", description: "Los datos se han guardado correctamente." });
       } else {
-        const res = await fetch(
-          `${API_BASE}/articles/company/${companyId}/general`,
+        const res = await apiFetch(
+          `/articles/company/${companyId}/general`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -736,18 +741,15 @@ export function ArticleFormDialog({
 
     setLoading(true);
     try {
-      const url = isNew
-        ? `${API_BASE}/articles/${effectiveArticleId}/variants?companyId=${encodeURIComponent(companyId)}`
-        : `${API_BASE}/articles/variants/${v.id}?companyId=${encodeURIComponent(companyId)}`;
-      const method = isNew ? "POST" : "PATCH";
-      const res = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-        credentials: "include",
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.message ?? "Error al guardar variante");
+      const data = isNew
+        ? await apiPost<{ variants?: Array<{ id: string; sku: string; batches?: Batch[] }>; message?: string }>(
+            `/articles/${effectiveArticleId}/variants?companyId=${encodeURIComponent(companyId)}`,
+            payload
+          )
+        : await apiPatch<{ variants?: Array<{ id: string; sku: string; batches?: Batch[] }>; message?: string }>(
+            `/articles/variants/${v.id}?companyId=${encodeURIComponent(companyId)}`,
+            payload
+          );
 
       const allVariants = data?.variants ?? [];
 
@@ -783,12 +785,10 @@ export function ArticleFormDialog({
   useEffect(() => {
     if (!open || !companyId) return;
     const controller = new AbortController();
-    fetch(`${API_BASE}/system-settings/${TARIFF_NAMES_KEY}?companyId=${encodeURIComponent(companyId)}`, {
-      credentials: "include",
+    apiGet<{ value?: string }>(`/system-settings/${TARIFF_NAMES_KEY}?companyId=${encodeURIComponent(companyId)}`, {
       signal: controller.signal,
     })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data: { value?: string } | null) => {
+      .then((data) => {
         if (data?.value) {
           try {
             const parsed = JSON.parse(data.value) as Record<string, string>;
@@ -806,12 +806,10 @@ export function ArticleFormDialog({
   useEffect(() => {
     if (!open || !companyId) return;
     const controller = new AbortController();
-    fetch(`${API_BASE}/system-settings/${TARIFF_PROFITABILITY_KEY}?companyId=${encodeURIComponent(companyId)}`, {
-      credentials: "include",
+    apiGet<{ value?: string }>(`/system-settings/${TARIFF_PROFITABILITY_KEY}?companyId=${encodeURIComponent(companyId)}`, {
       signal: controller.signal,
     })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data: { value?: string } | null) => {
+      .then((data) => {
         if (data?.value) {
           try {
             const parsed = JSON.parse(data.value) as {
@@ -1013,8 +1011,8 @@ export function ArticleFormDialog({
     const needsFetch = !cat?.siglas && cat?.secuencial == null && !hasSeqVar;
     if (needsFetch) {
       try {
-        const res = await fetch(
-          `${API_BASE}/articles/catalogs/company/${companyId}/categories/${catId}`,
+        const res = await apiFetch(
+          `/articles/catalogs/company/${companyId}/categories/${catId}`,
           { credentials: "include" }
         );
         if (res.ok) {
@@ -1195,8 +1193,8 @@ export function ArticleFormDialog({
     try {
       const params = new URLSearchParams({ barcode: trimmed });
       if (excludeVariantId) params.set("excludeVariantId", excludeVariantId);
-      const res = await fetch(
-        `${API_BASE}/articles/company/${companyId}/check-barcode?${params.toString()}`,
+      const res = await apiFetch(
+        `/articles/company/${companyId}/check-barcode?${params.toString()}`,
         { credentials: "include" },
       );
       if (!res.ok) return false;
@@ -1889,8 +1887,8 @@ export function ArticleFormDialog({
     try {
       const formData = new FormData();
       formData.append("file", file);
-      const res = await fetch(
-        `${API_BASE}/articles/${effectiveArticleId}/images?companyId=${encodeURIComponent(companyId)}&isMain=${isMain}`,
+      const res = await apiFetch(
+        `/articles/${effectiveArticleId}/images?companyId=${encodeURIComponent(companyId)}&isMain=${isMain}`,
         {
           method: "POST",
           body: formData,
@@ -1923,8 +1921,8 @@ export function ArticleFormDialog({
   async function setMainImage(imageId: string) {
     if (!effectiveArticleId) return;
     try {
-      await fetch(
-        `${API_BASE}/articles/${effectiveArticleId}/images/${imageId}/main?companyId=${encodeURIComponent(companyId)}`,
+      await apiFetch(
+        `/articles/${effectiveArticleId}/images/${imageId}/main?companyId=${encodeURIComponent(companyId)}`,
         { method: "PATCH", credentials: "include" }
       );
       setImages((prev) =>
@@ -1940,8 +1938,8 @@ export function ArticleFormDialog({
   async function removeImage(imageId: string) {
     if (!effectiveArticleId) return;
     try {
-      await fetch(
-        `${API_BASE}/articles/${effectiveArticleId}/images/${imageId}?companyId=${encodeURIComponent(companyId)}`,
+      await apiFetch(
+        `/articles/${effectiveArticleId}/images/${imageId}?companyId=${encodeURIComponent(companyId)}`,
         { method: "DELETE", credentials: "include" }
       );
       setImages((prev) => prev.filter((i) => i.id !== imageId));
@@ -1958,8 +1956,8 @@ export function ArticleFormDialog({
       return;
     }
     try {
-      const res = await fetch(
-        `${API_BASE}/articles/variants/${variantId}/batches?companyId=${encodeURIComponent(companyId)}`,
+      const res = await apiFetch(
+        `/articles/variants/${variantId}/batches?companyId=${encodeURIComponent(companyId)}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1996,8 +1994,8 @@ export function ArticleFormDialog({
 
   async function removeBatch(variantId: string, batchId: string) {
     try {
-      const res = await fetch(
-        `${API_BASE}/articles/variants/${variantId}/batches/${batchId}?companyId=${encodeURIComponent(companyId)}`,
+      const res = await apiFetch(
+        `/articles/variants/${variantId}/batches/${batchId}?companyId=${encodeURIComponent(companyId)}`,
         { method: "DELETE", credentials: "include" }
       );
       if (!res.ok) throw new Error("Error al eliminar");

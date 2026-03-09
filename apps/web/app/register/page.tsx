@@ -7,6 +7,7 @@ import * as z from "zod";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
+import { apiPost } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -25,8 +26,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-
-const API_BASE = "/api";
 
 const formSchema = z.object({
   company_name: z.string().min(1, "El nombre de la empresa es requerido"),
@@ -57,13 +56,9 @@ export default function RegisterPage() {
     setError("");
 
     try {
-      let res: Response;
       try {
-        res = await fetch(`${API_BASE}/auth/register`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(values),
-          credentials: "include",
+        await apiPost<Record<string, unknown>>("/api/auth/register", values, {
+          skip401Redirect: true,
         });
       } catch (fetchError: unknown) {
         console.error("Error de red al registrar:", fetchError);
@@ -80,22 +75,6 @@ export default function RegisterPage() {
         }
         throw fetchError;
       }
-
-      let data: Record<string, unknown> = {};
-      try {
-        const text = await res.text();
-        if (text) data = JSON.parse(text) as Record<string, unknown>;
-      } catch {
-        data = { message: res.statusText || `Error ${res.status}` };
-      }
-
-      if (!res.ok) {
-        const msg = data?.message;
-        const message =
-          Array.isArray(msg) ? msg[0] : typeof msg === "string" ? msg : (data?.error as string) ?? `Error ${res.status}`;
-        throw new Error(String(message));
-      }
-
       router.push("/login?registered=1");
     } catch (err: unknown) {
       console.error("Error al registrar:", err);

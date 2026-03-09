@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -35,8 +35,14 @@ export class UsersController {
   }
 
   @Get('company/:companyId')
-  findAllByCompany(@Param('companyId') companyId: string) {
-    return this.usersService.findAllByCompany(companyId);
+  findAllByCompany(
+    @Param('companyId') companyId: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const pageNum = Math.max(1, parseInt(page || '1', 10) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit || '20', 10) || 20));
+    return this.usersService.findAllByCompany(companyId, pageNum, limitNum);
   }
 
   @Post('company/:companyId/assign')

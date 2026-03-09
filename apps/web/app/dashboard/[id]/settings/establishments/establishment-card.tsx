@@ -17,8 +17,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/use-toast";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+import { apiDelete, apiPatch } from "@/lib/api-client";
 
 type EstablishmentRow = {
   id: string;
@@ -52,12 +51,7 @@ export function EstablishmentCard({ establishment, companyId, limitInfo = { coun
     if (!inactivateTarget) return;
     setInactivating(true);
     try {
-      const res = await fetch(
-        `${API_BASE}/establishments/${inactivateTarget.id}?companyId=${encodeURIComponent(companyId)}`,
-        { method: "DELETE", credentials: "include" }
-      );
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.message || "Error al inactivar");
+      await apiDelete(`/establishments/${inactivateTarget.id}?companyId=${encodeURIComponent(companyId)}`);
       setInactivateTarget(null);
       router.refresh();
       toast({
@@ -79,12 +73,7 @@ export function EstablishmentCard({ establishment, companyId, limitInfo = { coun
   async function handleActivate() {
     setActivatingId(est.id);
     try {
-      const res = await fetch(
-        `${API_BASE}/establishments/${est.id}/activate?companyId=${encodeURIComponent(companyId)}`,
-        { method: "PATCH", credentials: "include" }
-      );
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.message || "Error al activar");
+      await apiPatch(`/establishments/${est.id}/activate?companyId=${encodeURIComponent(companyId)}`);
       router.refresh();
       toast({
         title: "Éxito",

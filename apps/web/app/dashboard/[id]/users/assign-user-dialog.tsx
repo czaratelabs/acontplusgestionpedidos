@@ -23,8 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+import { apiGet, apiPost } from "@/lib/api-client";
 
 const formSchema = z.object({
   userId: z.string().min(1, "Selecciona un usuario"),
@@ -115,12 +114,8 @@ export function AssignUserDialog({
     if (open) {
       setLoadingData(true);
       Promise.all([
-        fetch(`${API_BASE}/users/available-for-company/${companyId}`, {
-          credentials: "include",
-        }).then((r) => (r.ok ? r.json() : [])),
-        fetch(`${API_BASE}/roles?companyId=${companyId}`, {
-          credentials: "include",
-        }).then((r) => (r.ok ? r.json() : [])),
+        apiGet<AvailableUser[] | unknown[]>(`/users/available-for-company/${companyId}`).catch(() => []),
+        apiGet<Role[] | unknown[]>(`/roles?companyId=${companyId}`).catch(() => []),
       ])
         .then(([users, rolesData]) => {
           setAvailableUsers(Array.isArray(users) ? users : []);
@@ -143,24 +138,10 @@ export function AssignUserDialog({
   async function onSubmit(values: FormValues) {
     setLoading(true);
     try {
-      const res = await fetch(
-        `${API_BASE}/users/company/${companyId}/assign`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            userId: values.userId,
-            role: values.role,
-          }),
-          credentials: "include",
-        }
-      );
-
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        const msg = Array.isArray(data.message) ? data.message[0] : (data.message ?? "Error al asignar");
-        throw new Error(typeof msg === "string" ? msg : "Error al asignar");
-      }
+      await apiPost(`/users/company/${companyId}/assign`, {
+        userId: values.userId,
+        role: values.role,
+      });
 
       onOpenChange(false);
       reset();

@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/use-toast";
+import { apiPost, apiPatch } from "@/lib/api-client";
 
 export type RoleForDialog = {
   id: string;
@@ -25,8 +26,6 @@ export type RoleForDialog = {
   description: string | null;
   isActive: boolean;
 };
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
 const formSchema = z.object({
   name: z.string().min(1, "El nombre del rol es requerido"),
@@ -93,21 +92,10 @@ export function RoleDialog({
         companyId: isEditing ? undefined : companyId,
       };
 
-      const url = initialData
-        ? `${API_BASE}/roles/${initialData.id}`
-        : `${API_BASE}/roles`;
-      const method = initialData ? "PATCH" : "POST";
-
-      const res = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(initialData ? { name: payload.name, description: payload.description } : payload),
-        credentials: "include",
-      });
-
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(data.message || "Error al guardar");
+      if (initialData) {
+        await apiPatch(`/roles/${initialData.id}`, { name: payload.name, description: payload.description });
+      } else {
+        await apiPost(`/roles`, payload);
       }
 
       onOpenChange(false);

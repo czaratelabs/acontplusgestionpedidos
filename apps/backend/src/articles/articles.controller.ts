@@ -25,10 +25,12 @@ import { UpdateArticleDto } from './dto/update-article.dto';
 import { SaveArticleGeneralDto } from './dto/save-article-general.dto';
 import { CreateBatchDto } from './dto/create-batch.dto';
 import { UpdateBatchDto } from './dto/update-batch.dto';
+import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ModuleEnabledGuard } from '../common/guards/module-enabled.guard';
 import { ModuleEnabled } from '../common/decorators/module-enabled.decorator';
 
+@ApiTags('articles')
 @Controller('articles')
 @UseGuards(JwtAuthGuard, ModuleEnabledGuard)
 @ModuleEnabled('logistics', 'Tu plan no incluye el módulo de Inventario. Contacta al administrador para actualizar tu suscripción.')
@@ -70,8 +72,14 @@ export class ArticlesController {
   }
 
   @Get('company/:companyId')
-  findAll(@Param('companyId') companyId: string) {
-    return this.articlesService.findAll(companyId);
+  findAll(
+    @Param('companyId') companyId: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const pageNum = Math.max(1, parseInt(page || '1', 10) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit || '20', 10) || 20));
+    return this.articlesService.findAll(companyId, pageNum, limitNum);
   }
 
   @Get(':id')

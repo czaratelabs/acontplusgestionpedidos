@@ -1,17 +1,136 @@
-/** Funciones API que pueden usarse en Client Components (sin next/headers) */
+/**
+ * Cliente HTTP centralizado para Client Components.
+ * - API_BASE desde NEXT_PUBLIC_API_URL
+ * - credentials: 'include' en todas las peticiones
+ * - Content-Type: application/json por defecto
+ * - Interceptor 401 → redirect a /login
+ */
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+
+export { API_BASE };
+
+type ApiOptions = RequestInit & { skip401Redirect?: boolean };
+
+function buildUrl(path: string): string {
+  if (path.startsWith("/api") || path.startsWith("http")) return path;
+  const p = path.startsWith("/") ? path : `/${path}`;
+  return API_BASE + p;
+}
+
+function defaultHeaders(opts?: ApiOptions): HeadersInit {
+  const h: Record<string, string> = {};
+  if (opts?.headers && typeof opts.headers === "object" && !Array.isArray(opts.headers)) {
+    Object.assign(h, opts.headers as Record<string, string>);
+  }
+  return h;
+}
+
+async function handleResponse<T>(res: Response, skip401Redirect?: boolean): Promise<T> {
+  if (res.status === 401 && !skip401Redirect && typeof window !== "undefined") {
+    window.location.href = "/login";
+    throw new Error("Sesión expirada");
+  }
+  const text = await res.text();
+  if (!res.ok) {
+    let message = `Error ${res.status}`;
+    if (text) {
+      try {
+        const err = JSON.parse(text);
+        if (typeof err?.message === "string") message = err.message;
+      } catch {
+        message = text;
+      }
+    }
+    throw new Error(message);
+  }
+  if (!text?.trim()) return null as T;
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return text as unknown as T;
+  }
+}
+
+export async function apiGet<T = unknown>(url: string, opts?: ApiOptions): Promise<T> {
+  const res = await fetch(buildUrl(url), {
+    ...opts,
+    method: "GET",
+    credentials: "include",
+    headers: { ...defaultHeaders(opts) },
+  });
+  return handleResponse<T>(res, opts?.skip401Redirect);
+}
+
+export async function apiPost<T = unknown>(url: string, body?: unknown, opts?: ApiOptions): Promise<T> {
+  const res = await fetch(buildUrl(url), {
+    ...opts,
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json", ...defaultHeaders(opts) },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  return handleResponse<T>(res, opts?.skip401Redirect);
+}
+
+export async function apiPatch<T = unknown>(url: string, body?: unknown, opts?: ApiOptions): Promise<T> {
+  const res = await fetch(buildUrl(url), {
+    ...opts,
+    method: "PATCH",
+    credentials: "include",
+    headers: { "Content-Type": "application/json", ...defaultHeaders(opts) },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  return handleResponse<T>(res, opts?.skip401Redirect);
+}
+
+export async function apiPut<T = unknown>(url: string, body?: unknown, opts?: ApiOptions): Promise<T> {
+  const res = await fetch(buildUrl(url), {
+    ...opts,
+    method: "PUT",
+    credentials: "include",
+    headers: { "Content-Type": "application/json", ...defaultHeaders(opts) },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  return handleResponse<T>(res, opts?.skip401Redirect);
+}
+
+export async function apiDelete<T = unknown>(url: string, opts?: ApiOptions): Promise<T> {
+  const res = await fetch(buildUrl(url), {
+    ...opts,
+    method: "DELETE",
+    credentials: "include",
+    headers: { ...defaultHeaders(opts) },
+  });
+  return handleResponse<T>(res, opts?.skip401Redirect);
+}
+
+/** Fetch raw Response (para casos que necesitan res.ok, res.status, etc.) */
+export async function apiFetch(url: string, init?: RequestInit): Promise<Response> {
+  const headers: Record<string, string> = { ...(init?.headers as Record<string, string>) };
+  if (init?.body && typeof init.body === "string" && !headers["Content-Type"]) {
+    headers["Content-Type"] = "application/json";
+  }
+  const res = await fetch(buildUrl(url), {
+    ...init,
+    credentials: "include",
+    headers,
+  });
+  if (res.status === 401 && typeof window !== "undefined") {
+    window.location.href = "/login";
+  }
+  return res;
+}
+
+// --- Funciones de dominio (usan el cliente centralizado) ---
 
 export async function getCompanyWarehouseLimitInfoClient(
   companyId: string
 ): Promise<{ count: number; limit: number }> {
   try {
-    const res = await fetch(
-      `${API_BASE}/warehouses/company/${companyId}/limit-info`,
-      { credentials: "include" }
+    return await apiGet<{ count: number; limit: number }>(
+      `/warehouses/company/${companyId}/limit-info`
     );
-    if (!res.ok) return { count: 0, limit: -1 };
-    return res.json();
   } catch {
     return { count: 0, limit: -1 };
   }
@@ -21,31 +140,26 @@ export async function getCompanyEmissionPointLimitInfoClient(
   companyId: string
 ): Promise<{ count: number; limit: number }> {
   try {
-    const res = await fetch(
-      `${API_BASE}/emission-points/company/${companyId}/limit-info`,
-      { credentials: "include" }
+    return await apiGet<{ count: number; limit: number }>(
+      `/emission-points/company/${companyId}/limit-info`
     );
-    if (!res.ok) return { count: 0, limit: -1 };
-    return res.json();
   } catch {
     return { count: 0, limit: -1 };
   }
 }
 
-/** Catálogos de inventario (para uso en Client Components) */
-async function fetchCatalog(companyId: string, path: string): Promise<{ id: string; name: string }[]> {
-  const res = await fetch(`${API_BASE}/articles/catalogs/company/${companyId}/${path}`, {
-    credentials: "include",
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(typeof err?.message === "string" ? err.message : `Error ${res.status} al cargar ${path}`);
-  }
-  const data = await res.json();
+export type CatalogItem = { id: string; name: string };
+
+async function fetchCatalog(
+  companyId: string,
+  path: string
+): Promise<{ id: string; name: string }[]> {
+  const data = await apiGet<unknown[]>(
+    `/articles/catalogs/company/${companyId}/${path}`
+  );
   return Array.isArray(data) ? data : [];
 }
 
-/** Fetch catálogo que lanza en error (para páginas que necesitan detectar fallos) */
 export async function fetchCatalogStrict(
   companyId: string,
   path: "brands" | "categories" | "measures" | "colors" | "sizes" | "flavors"
@@ -96,26 +210,16 @@ export async function getFlavorsClient(companyId: string) {
   }
 }
 
-export type CatalogItem = { id: string; name: string };
-
-/** Crear items en catálogos (para uso en Client Components) */
 export async function createCatalogItemClient(
   companyId: string,
   catalog: "brands" | "categories" | "measures" | "colors" | "sizes" | "flavors",
   name: string
 ): Promise<CatalogItem | null> {
   try {
-    const res = await fetch(
-      `${API_BASE}/articles/catalogs/company/${companyId}/${catalog}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim() }),
-        credentials: "include",
-      }
+    return await apiPost<CatalogItem>(
+      `/articles/catalogs/company/${companyId}/${catalog}`,
+      { name: name.trim() }
     );
-    if (!res.ok) return null;
-    return res.json();
   } catch {
     return null;
   }

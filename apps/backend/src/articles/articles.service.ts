@@ -149,13 +149,20 @@ export class ArticlesService {
     return [];
   }
 
-  async findAll(companyId: string): Promise<Article[]> {
-    const articles = await this.articleRepo.find({
+  async findAll(
+    companyId: string,
+    page = 1,
+    limit = 20,
+  ): Promise<{ data: Article[]; total: number; page: number; limit: number }> {
+    const [rows, total] = await this.articleRepo.findAndCount({
       where: { companyId },
       relations: ['brand', 'category', 'tax', 'variants', 'variants.color', 'variants.size', 'variants.flavor', 'variants.prices', 'variants.measureUnit', 'variants.batches', 'variants.barcodes', 'images'],
       order: { name: 'ASC' },
+      skip: (page - 1) * limit,
+      take: limit,
     });
-    return articles.map((a) => this.enrichArticle(a));
+    const data = rows.map((a) => this.enrichArticle(a));
+    return { data, total, page, limit };
   }
 
   async findOne(id: string): Promise<Article> {

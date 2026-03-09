@@ -4,6 +4,7 @@ process.env.TZ = 'America/Guayaquil';
 import { NestFactory } from '@nestjs/core';
 import { join } from 'path';
 import { ValidationPipe, Logger } from '@nestjs/common';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { ClsService } from './common/cls/cls-context.service';
 import { DataSource } from 'typeorm';
 import { AppModule } from './app.module';
@@ -61,8 +62,18 @@ async function bootstrap() {
     credentials: true,
   });
 
+  const config = new DocumentBuilder()
+    .setTitle('ACont+ API')
+    .setDescription('API de gestión de pedidos e inventario para PyMEs')
+    .setVersion('1.0')
+    .addBearerAuth()
+    .build();
+  const document = SwaggerModule.createDocument(app, config);
+  SwaggerModule.setup('api/docs', app, document);
+
   const port = process.env.PORT ?? 3001;
   await app.listen(port);
   logger.log(`Backend API: http://localhost:${port}`);
+  logger.log(`Swagger docs: http://localhost:${port}/api/docs`);
 }
 bootstrap();

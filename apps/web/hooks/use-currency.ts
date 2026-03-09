@@ -2,8 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { formatCurrency as formatCurrencyUtil } from "@/lib/currency";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+import { apiGet } from "@/lib/api-client";
 const SYSTEM_CURRENCY_KEY = "SYSTEM_CURRENCY";
 
 /**
@@ -40,11 +39,10 @@ export function useCompanyCurrency(companyId: string | undefined) {
       return;
     }
     setLoading(true);
-    const url = `${API_BASE}/system-settings/${SYSTEM_CURRENCY_KEY}?companyId=${encodeURIComponent(companyId)}`;
+    const url = `/system-settings/${SYSTEM_CURRENCY_KEY}?companyId=${encodeURIComponent(companyId)}`;
     const controller = new AbortController();
-    fetch(url, { credentials: "include", signal: controller.signal })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data: { value?: string } | null) => {
+    apiGet<{ value?: string }>(url, { signal: controller.signal })
+      .then((data) => {
         if (data?.value) setCurrencyCode(data.value);
       })
       .catch(() => {})

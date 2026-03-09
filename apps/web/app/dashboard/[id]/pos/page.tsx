@@ -5,8 +5,7 @@ import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+import { apiGet } from "@/lib/api-client";
 
 type VariantSearchResult = {
   id: string;
@@ -44,12 +43,9 @@ export default function POSPage({ params }: { params: Promise<{ id: string }> })
       }
       setLoading(true);
       try {
-        const res = await fetch(
-          `${API_BASE}/articles/company/${companyId}/search-variants?q=${encodeURIComponent(q.trim())}`,
-          { credentials: "include" }
+        const data = await apiGet<VariantSearchResult[]>(
+          `/articles/company/${companyId}/search-variants?q=${encodeURIComponent(q.trim())}`
         );
-        if (!res.ok) throw new Error("Error en búsqueda");
-        const data = await res.json();
         setVariants(Array.isArray(data) ? data : []);
       } catch {
         setVariants([]);

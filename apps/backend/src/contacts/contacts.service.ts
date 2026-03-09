@@ -135,12 +135,15 @@ export class ContactsService {
 
   /**
    * Find all contacts for a company with optional type filter and search (name or taxId).
+   * Supports pagination via page and limit.
    */
   async findAll(
     companyId: string,
     type: ContactTypeFilter = 'all',
     search?: string,
-  ): Promise<Contact[]> {
+    page = 1,
+    limit = 20,
+  ): Promise<{ data: Contact[]; total: number; page: number; limit: number }> {
     const effectiveType: ContactTypeFilter =
       type === 'client' || type === 'supplier' || type === 'employee'
         ? type
@@ -160,10 +163,13 @@ export class ContactsService {
       if (effectiveType === 'client') baseWhere.isClient = true;
       if (effectiveType === 'supplier') baseWhere.isSupplier = true;
       if (effectiveType === 'employee') baseWhere.isEmployee = true;
-      return this.contactRepo.find({
+      const [data, total] = await this.contactRepo.findAndCount({
         where: baseWhere,
         order: { name: 'ASC' },
+        skip: (page - 1) * limit,
+        take: limit,
       });
+      return { data, total, page, limit };
     }
 
     const qb = this.contactRepo
@@ -206,7 +212,11 @@ export class ContactsService {
       qb.andWhere('contact.isEmployee = :isEmployee', { isEmployee: true });
     }
 
-    return qb.getMany();
+    const [data, total] = await qb
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getManyAndCount();
+    return { data, total, page, limit };
   }
 
   /**

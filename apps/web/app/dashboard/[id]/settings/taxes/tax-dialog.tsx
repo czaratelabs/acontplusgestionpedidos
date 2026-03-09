@@ -17,8 +17,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/use-toast";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+import { apiPost, apiPatch } from "@/lib/api-client";
 
 const formSchema = z.object({
   name: z.string().min(1, "El nombre es requerido"),
@@ -94,20 +93,11 @@ export function TaxDialog({
         code: values.code.trim(),
       };
 
-      const url = initialData
-        ? `${API_BASE}/taxes/${initialData.id}`
-        : `${API_BASE}/taxes/company/${companyId}`;
-      const method = initialData ? "PATCH" : "POST";
-
-      const res = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-        credentials: "include",
-      });
-
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.message || "Error al guardar");
+      if (initialData) {
+        await apiPatch(`/taxes/${initialData.id}`, payload);
+      } else {
+        await apiPost(`/taxes/company/${companyId}`, payload);
+      }
 
       onOpenChange(false);
       reset();

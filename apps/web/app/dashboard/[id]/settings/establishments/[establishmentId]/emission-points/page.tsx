@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
+import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/api-client";
 
 const sequenceSchema = z.object({
   invoice_sequence: z.coerce.number().int().min(1, "Mínimo 1"),
@@ -40,8 +41,6 @@ type EmissionPoint = {
   delivery_note_sequence?: number;
   dispatch_sequence?: number;
 };
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
 const defaultSequences = {
   invoice_sequence: 1,
@@ -72,10 +71,9 @@ export default function EmissionPointsPage({
 
   async function refetchPoints() {
     try {
-      const res = await fetch(`${API_BASE}/emission-points/establishment/${establishmentId}`, {
-        credentials: "include",
-      });
-      const data = res.ok ? await res.json() : [];
+      const data = await apiGet<EmissionPoint[] | unknown[]>(
+        `/emission-points/establishment/${establishmentId}`
+      );
       setPoints(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error(err);
@@ -93,10 +91,7 @@ export default function EmissionPointsPage({
 
   // Cargar puntos
   useEffect(() => {
-    fetch(`${API_BASE}/emission-points/establishment/${establishmentId}`, {
-      credentials: "include",
-    })
-      .then((res) => (res.ok ? res.json() : []))
+    apiGet<EmissionPoint[] | unknown[]>(`/emission-points/establishment/${establishmentId}`)
       .then((data) => setPoints(Array.isArray(data) ? data : []))
       .catch((err) => console.error(err));
   }, [establishmentId, open]);
@@ -129,10 +124,6 @@ export default function EmissionPointsPage({
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setLoading(true);
     try {
-      const url = editingPoint
-        ? `${API_BASE}/emission-points/${editingPoint.id}`
-        : `${API_BASE}/emission-points/establishment/${establishmentId}`;
-      const method = editingPoint ? "PATCH" : "POST";
       const body = {
         code: values.code,
         name: values.name,
@@ -142,26 +133,22 @@ export default function EmissionPointsPage({
         delivery_note_sequence: values.delivery_note_sequence,
         dispatch_sequence: values.dispatch_sequence,
       };
-
-      const res = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-        credentials: "include",
-      });
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        const msg = data.message || "Error al guardar";
-        if (res.status === 403) {
+      try {
+        if (editingPoint) {
+          await apiPatch(`/emission-points/${editingPoint.id}`, body);
+        } else {
+          await apiPost(`/emission-points/establishment/${establishmentId}`, body);
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Error al guardar";
+        if (msg.includes("403") || msg.includes("límite") || msg.includes("Límite")) {
           toast({
             title: "Límite alcanzado",
             description: "Has alcanzado el límite de Puntos de Emisión permitidos en tu plan actual. Contacta al administrador para mejorar tu suscripción.",
             variant: "destructive",
           });
-          throw new Error(msg);
         }
-        throw new Error(msg);
+        throw err;
       }
 
       setOpen(false);
@@ -197,12 +184,7 @@ export default function EmissionPointsPage({
     if (!inactivateTarget) return;
     setInactivating(true);
     try {
-      const res = await fetch(`${API_BASE}/emission-points/${inactivateTarget.id}`, {
-        method: "DELETE",
-        credentials: "include",
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.message || "Error al inactivar");
+      await apiDelete(`/emission-points/${inactivateTarget.id}`);
       setInactivateTarget(null);
       await refetchPoints();
       router.refresh();
@@ -226,12 +208,7 @@ export default function EmissionPointsPage({
   async function handleActivate(point: EmissionPoint) {
     setActivatingId(point.id);
     try {
-      const res = await fetch(`${API_BASE}/emission-points/${point.id}/activate`, {
-        method: "PATCH",
-        credentials: "include",
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.message || "Error al activar");
+      await apiPatch(`/emission-points/${point.id}/activate`);
       await refetchPoints();
       router.refresh();
       getCompanyEmissionPointLimitInfoClient(companyId).then(setLimitInfo);

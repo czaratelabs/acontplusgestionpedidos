@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { apiGet } from "@/lib/api-client";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 const SYSTEM_TIMEZONE_KEY = "SYSTEM_TIMEZONE";
 const DEFAULT_TIMEZONE = "America/Guayaquil";
 
@@ -25,11 +25,10 @@ export function useCompanyTimezone(companyId: string | undefined) {
       return;
     }
     setLoading(true);
-    const url = `${API_BASE}/system-settings/${SYSTEM_TIMEZONE_KEY}?companyId=${encodeURIComponent(companyId)}`;
     const controller = new AbortController();
-    fetch(url, { credentials: "include", signal: controller.signal })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data: { value?: string } | null) => {
+    const url = `/system-settings/${SYSTEM_TIMEZONE_KEY}?companyId=${encodeURIComponent(companyId)}`;
+    apiGet<{ value?: string }>(url, { signal: controller.signal })
+      .then((data) => {
         if (data?.value?.trim()) setTimeZone(data.value.trim());
       })
       .catch(() => {})

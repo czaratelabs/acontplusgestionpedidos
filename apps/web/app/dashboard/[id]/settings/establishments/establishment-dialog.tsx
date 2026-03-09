@@ -19,6 +19,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/use-toast";
+import { apiPost, apiPatch } from "@/lib/api-client";
 
 const formSchema = z.object({
   name: z.string().min(2, "Nombre requerido"),
@@ -38,8 +39,6 @@ export type Establishment = {
   series: string;
   logo_url?: string | null;
 };
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
 type LimitInfo = { count: number; limit: number };
 
@@ -96,21 +95,10 @@ export function EstablishmentDialog({ companyId, initialData = null, limitInfo }
     };
 
     try {
-      const url = initialData
-        ? `${API_BASE}/establishments/${initialData.id}?companyId=${encodeURIComponent(companyId)}`
-        : `${API_BASE}/establishments/company/${companyId}`;
-      const method = initialData ? "PATCH" : "POST";
-
-      const res = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-        credentials: "include",
-      });
-
-      const errorData = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(errorData.message || "Error al guardar");
+      if (initialData) {
+        await apiPatch(`/establishments/${initialData.id}?companyId=${encodeURIComponent(companyId)}`, payload);
+      } else {
+        await apiPost(`/establishments/company/${companyId}`, payload);
       }
 
       setOpen(false);

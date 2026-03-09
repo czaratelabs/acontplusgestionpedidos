@@ -15,8 +15,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "/api";
+import { apiGet, apiPatch, apiDelete } from "@/lib/api-client";
 
 export type ContactRow = {
   id: string;
@@ -57,24 +56,22 @@ export function ContactList({ companyId, type }: ContactListProps) {
   const fetchContacts = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(
-        `${API_BASE}/contacts/company/${companyId}?type=${type}`,
-        { credentials: "include" }
+      const res = await apiGet<{ data?: unknown[] } | unknown[]>(
+        `/contacts/company/${companyId}?type=${type}`,
+        { skip401Redirect: true }
       );
-      if (!res.ok) {
-        if (res.status === 401) {
-          setContacts([]);
-          return;
-        }
-        throw new Error("Error al cargar contactos");
-      }
-      const data = await res.json();
-      setContacts(Array.isArray(data) ? data : []);
+      const list = res && typeof res === "object" && Array.isArray((res as { data?: unknown[] }).data)
+        ? (res as { data: unknown[] }).data
+        : Array.isArray(res) ? res : [];
+      setContacts(list as ContactRow[]);
     } catch (error) {
       console.error(error);
+      const errMsg = error instanceof Error ? error.message : String(error);
       const isNetworkError =
-        error instanceof TypeError &&
-        (error.message === "Failed to fetch" || error.message === "Load failed");
+        error instanceof TypeError ||
+        errMsg.includes("Failed to fetch") ||
+        errMsg.includes("Load failed") ||
+        errMsg.includes("fetch");
       // Mostrar toast de conexión solo una vez para no saturar
       if (isNetworkError && !hasShownConnectionError.current) {
         hasShownConnectionError.current = true;
@@ -136,14 +133,7 @@ export function ContactList({ companyId, type }: ContactListProps) {
     }
     setInactivatingId(contact.id);
     try {
-      const res = await fetch(`${API_BASE}/contacts/${contact.id}`, {
-        method: "DELETE",
-        credentials: "include",
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.message || "Error al inactivar");
-      }
+      await apiDelete(`/contacts/${contact.id}`);
       toast({
         title: "Inactivado",
         description: "Contacto inactivado correctamente.",
@@ -166,14 +156,7 @@ export function ContactList({ companyId, type }: ContactListProps) {
   async function handleActivate(contact: ContactRow) {
     setActivatingId(contact.id);
     try {
-      const res = await fetch(`${API_BASE}/contacts/${contact.id}/activate`, {
-        method: "PATCH",
-        credentials: "include",
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.message || "Error al activar");
-      }
+      await apiPatch(`/contacts/${contact.id}/activate`);
       toast({
         title: "Activado",
         description: "Contacto activado correctamente.",

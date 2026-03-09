@@ -22,8 +22,7 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/use-toast";
 import { ArticleFormDialog } from "./article-form-dialog";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+import { apiGet, apiDelete, API_BASE } from "@/lib/api-client";
 const TARIFF_NAMES_KEY = "TARIFF_NAMES";
 const DEFAULT_TARIFF_LABELS: Record<string, string> = {
   "1": "Tarifa 1",
@@ -118,12 +117,9 @@ export function ArticlesTable({ companyId, articles, brands, categories, taxes, 
   useEffect(() => {
     if (!companyId) return;
     const controller = new AbortController();
-    fetch(`${API_BASE}/system-settings/${TARIFF_NAMES_KEY}?companyId=${encodeURIComponent(companyId)}`, {
-      credentials: "include",
-      signal: controller.signal,
-    })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data: { value?: string } | null) => {
+    const url = `/system-settings/${TARIFF_NAMES_KEY}?companyId=${encodeURIComponent(companyId)}`;
+    apiGet<{ value?: string } | null>(url, { signal: controller.signal })
+      .then((data) => {
         if (data?.value) {
           try {
             const parsed = JSON.parse(data.value) as Record<string, string>;
@@ -144,14 +140,7 @@ export function ArticlesTable({ companyId, articles, brands, categories, taxes, 
     setDeletingId(id);
     setArticleToDelete(null);
     try {
-      const res = await fetch(`${API_BASE}/articles/${id}?companyId=${encodeURIComponent(companyId)}`, {
-        method: "DELETE",
-        credentials: "include",
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.message ?? "Error al eliminar");
-      }
+      await apiDelete(`/articles/${id}?companyId=${encodeURIComponent(companyId)}`);
       router.refresh();
       toast({ title: "Artículo eliminado", description: "El artículo se ha eliminado correctamente." });
     } catch (err) {

@@ -33,6 +33,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/use-toast";
+import { apiGet, apiPatch } from "@/lib/api-client";
 
 /** Mapa de claves de módulos a etiquetas legibles */
 const MODULE_LABELS: Record<string, string> = {
@@ -85,8 +86,6 @@ type Company = {
   subscriptionPeriod: "monthly" | "annual" | null;
 };
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
-
 function formatDate(s: string | null): string {
   if (!s) return "-";
   const d = new Date(s);
@@ -124,8 +123,8 @@ export default function AdminSubscriptionsPage() {
   useEffect(() => {
     let cancelled = false;
     Promise.all([
-      fetch(`${API_BASE}/subscription-plans`, { credentials: "include" }).then((res) => (res.ok ? res.json() : [])),
-      fetch(`${API_BASE}/companies`, { credentials: "include" }).then((res) => (res.ok ? res.json() : [])),
+      apiGet<Plan[] | unknown[]>("/subscription-plans").catch(() => []),
+      apiGet<Company[] | unknown[]>("/companies").catch(() => []),
     ]).then(([plansData, companiesData]) => {
       if (!cancelled) {
         setPlans(Array.isArray(plansData) ? plansData : []);
@@ -170,21 +169,14 @@ export default function AdminSubscriptionsPage() {
     }
     setSaving(true);
     try {
-      const res = await fetch(`${API_BASE}/subscription-plans/${editingPlan.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: formName.trim(),
-          price: parseFloat(formPrice) || 0,
-          implementationFee: parseFloat(formImplementationFee) || 0,
-          limits: formLimits,
-          modules: formModules,
-          isActive: formIsActive,
-        }),
-        credentials: "include",
+      const data = await apiPatch<Plan>(`/subscription-plans/${editingPlan.id}`, {
+        name: formName.trim(),
+        price: parseFloat(formPrice) || 0,
+        implementationFee: parseFloat(formImplementationFee) || 0,
+        limits: formLimits,
+        modules: formModules,
+        isActive: formIsActive,
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.message || "Error al guardar");
       setPlans((prev) =>
         prev.map((p) => (p.id === editingPlan.id ? { ...p, ...data } : p))
       );
@@ -256,19 +248,12 @@ export default function AdminSubscriptionsPage() {
     }
     setAssignSaving(true);
     try {
-      const res = await fetch(`${API_BASE}/companies/${companyId}/subscription`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          planId: assignPlanId,
-          startDate: assignStartDate,
-          endDate: assignEndDate,
-          period: assignPeriod,
-        }),
-        credentials: "include",
+      await apiPatch(`/companies/${companyId}/subscription`, {
+        planId: assignPlanId,
+        startDate: assignStartDate,
+        endDate: assignEndDate,
+        period: assignPeriod,
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.message || "Error al guardar");
       setCompanies((prev) =>
         prev.map((c) =>
           c.id === companyId

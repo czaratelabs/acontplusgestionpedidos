@@ -5,8 +5,7 @@ import { useRouter } from "next/navigation";
 import Cookies from "js-cookie";
 import { jwtDecode } from "jwt-decode";
 import { RolesTableClient } from "./roles-table";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+import { apiGet } from "@/lib/api-client";
 
 type Role = {
   id: string;
@@ -45,10 +44,7 @@ export default function RolesSettingsPage({
     }
 
     let cancelled = false;
-    fetch(`${API_BASE}/roles?companyId=${encodeURIComponent(companyId)}`, {
-      credentials: "include",
-    })
-      .then((res) => (res.ok ? res.json() : []))
+    apiGet<Role[] | unknown>(`/roles?companyId=${encodeURIComponent(companyId)}`)
       .then((data) => {
         if (!cancelled && Array.isArray(data)) setRoles(data);
       })
@@ -65,11 +61,9 @@ export default function RolesSettingsPage({
   }, [companyId, router]);
 
   const refreshRoles = () => {
-    fetch(`${API_BASE}/roles?companyId=${encodeURIComponent(companyId)}`, {
-      credentials: "include",
-    })
-      .then((res) => (res.ok ? res.json() : []))
-      .then((data) => setRoles(Array.isArray(data) ? data : []));
+    apiGet<Role[]>(`/roles?companyId=${encodeURIComponent(companyId)}`)
+      .then((data) => setRoles(Array.isArray(data) ? data : []))
+      .catch(() => setRoles([]));
   };
 
   return (

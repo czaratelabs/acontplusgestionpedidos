@@ -39,24 +39,35 @@ export class UsersService {
 
   async findAllByCompany(
     companyId: string,
-  ): Promise<Array<{ id: string; full_name: string; email: string; created_at: Date; role: string }>> {
-    const userCompanies = await this.userCompanyRepository
+    page = 1,
+    limit = 20,
+  ): Promise<{
+    data: Array<{ id: string; full_name: string; email: string; created_at: Date; role: string }>;
+    total: number;
+    page: number;
+    limit: number;
+  }> {
+    const qb = this.userCompanyRepository
       .createQueryBuilder('uc')
       .innerJoinAndSelect('uc.user', 'u')
       .innerJoinAndSelect('uc.role', 'r')
       .where('uc.companyId = :companyId', { companyId })
       .andWhere('uc.isActive = :active', { active: true })
       .andWhere('(u.is_super_admin IS NULL OR u.is_super_admin = false)')
-      .orderBy('u.created_at', 'DESC')
-      .getMany();
+      .orderBy('u.created_at', 'DESC');
+    const [userCompanies, total] = await qb
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getManyAndCount();
 
-    return userCompanies.map((uc) => ({
+    const data = userCompanies.map((uc) => ({
       id: uc.user.id,
       full_name: uc.user.full_name,
       email: uc.user.email,
       created_at: uc.user.created_at,
       role: uc.role.name,
     }));
+    return { data, total, page, limit };
   }
 
   async createEmployee(

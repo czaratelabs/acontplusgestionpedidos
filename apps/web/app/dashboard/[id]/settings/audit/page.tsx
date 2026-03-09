@@ -24,7 +24,7 @@ import { Eye } from "lucide-react";
 import { DateFormatter } from "@/components/date-formatter";
 
 // Usar /api para que pase por el proxy de Next.js (evita CORS, reenvía cookies, consistente con contact-list)
-const API_BASE = "/api";
+import { apiGet } from "@/lib/api-client";
 
 type AuditLogItem = {
   id: string;
@@ -124,16 +124,8 @@ export default function AuditPage({
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    const url = `${API_BASE}/audit-logs?companyId=${encodeURIComponent(companyId)}&page=${page}&limit=${limit}`;
-    fetch(url, { credentials: "include" })
-      .then(async (res) => {
-        if (!res.ok) {
-          const text = await res.text();
-          console.error("API Error Response:", text);
-          throw new Error(`Error ${res.status}: ${res.statusText}`);
-        }
-        return res.json();
-      })
+    const url = `/api/audit-logs?companyId=${encodeURIComponent(companyId)}&page=${page}&limit=${limit}`;
+    apiGet<{ data?: AuditLogItem[]; total?: number }>(url)
       .then((data) => {
         if (cancelled) return;
         if (Array.isArray(data.data)) {
