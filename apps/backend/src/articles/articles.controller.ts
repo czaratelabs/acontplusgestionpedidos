@@ -29,10 +29,12 @@ import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ModuleEnabledGuard } from '../common/guards/module-enabled.guard';
 import { ModuleEnabled } from '../common/decorators/module-enabled.decorator';
+import { RoleGuard } from '../common/guards/role.guard';
+import { RequirePermission } from '../common/decorators/require-permission.decorator';
 
 @ApiTags('articles')
 @Controller('articles')
-@UseGuards(JwtAuthGuard, ModuleEnabledGuard)
+@UseGuards(JwtAuthGuard, ModuleEnabledGuard, RoleGuard)
 @ModuleEnabled('logistics', 'Tu plan no incluye el módulo de Inventario. Contacta al administrador para actualizar tu suscripción.')
 export class ArticlesController {
   constructor(
@@ -88,6 +90,7 @@ export class ArticlesController {
   }
 
   @Post('company/:companyId')
+  @RequirePermission('inventory', 'edit')
   create(
     @Param('companyId') companyId: string,
     @Body() dto: CreateArticleDto,
@@ -108,6 +111,7 @@ export class ArticlesController {
   }
 
   @Patch(':id')
+  @RequirePermission('inventory', 'edit')
   update(
     @Param('id') id: string,
     @Query('companyId') companyId: string,
@@ -121,6 +125,7 @@ export class ArticlesController {
    * No requiere ni procesa variantes.
    */
   @Patch(':id/general')
+  @RequirePermission('inventory', 'edit')
   updateGeneral(
     @Param('id') id: string,
     @Query('companyId') companyId: string,
@@ -141,6 +146,7 @@ export class ArticlesController {
 
   /** Update a single variant (resource-based, per-item save). */
   @Patch('variants/:variantId')
+  @RequirePermission('inventory', 'edit')
   updateVariant(
     @Param('variantId') variantId: string,
     @Query('companyId') companyId: string,
@@ -150,6 +156,7 @@ export class ArticlesController {
   }
 
   @Delete(':id')
+  @RequirePermission('inventory', 'delete')
   remove(
     @Param('id') id: string,
     @Query('companyId') companyId: string,
@@ -188,6 +195,7 @@ export class ArticlesController {
   }
 
   @Patch(':id/images/:imageId/main')
+  @RequirePermission('inventory', 'edit')
   setMainImage(
     @Param('id') articleId: string,
     @Param('imageId') imageId: string,
@@ -197,6 +205,7 @@ export class ArticlesController {
   }
 
   @Delete(':id/images/:imageId')
+  @RequirePermission('inventory', 'delete')
   removeImage(
     @Param('id') articleId: string,
     @Param('imageId') imageId: string,
@@ -207,6 +216,7 @@ export class ArticlesController {
 
   // --- Batches ---
   @Post('variants/:variantId/batches')
+  @RequirePermission('inventory', 'edit')
   addBatch(
     @Param('variantId') variantId: string,
     @Query('companyId') companyId: string,
@@ -216,6 +226,7 @@ export class ArticlesController {
   }
 
   @Patch('variants/:variantId/batches/:batchId')
+  @RequirePermission('inventory', 'edit')
   updateBatch(
     @Param('variantId') variantId: string,
     @Param('batchId') batchId: string,
@@ -226,6 +237,7 @@ export class ArticlesController {
   }
 
   @Delete('variants/:variantId/batches/:batchId')
+  @RequirePermission('inventory', 'delete')
   removeBatch(
     @Param('variantId') variantId: string,
     @Param('batchId') batchId: string,
@@ -235,6 +247,7 @@ export class ArticlesController {
   }
 
   @Patch('variants/:variantId/cost')
+  @RequirePermission('inventory', 'edit')
   updateVariantCost(
     @Param('variantId') variantId: string,
     @Query('companyId') companyId: string,
@@ -248,6 +261,7 @@ export class ArticlesController {
   }
 
   @Post('variants/:variantId/recalculate-prices')
+  @RequirePermission('inventory', 'edit')
   recalculatePrices(
     @Param('variantId') variantId: string,
     @Query('companyId') companyId: string,

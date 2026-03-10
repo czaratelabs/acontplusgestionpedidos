@@ -41,26 +41,33 @@ CREATE TRIGGER trg_sync_cost_update
 AFTER UPDATE OF cost ON public.article_variants
 FOR EACH ROW EXECUTE FUNCTION public.fn_sync_cost_to_profitability();
 
--- Actualizamos la lógica del buscador para darle máxima prioridad al nuevo CÓDIGO
-CREATE OR REPLACE FUNCTION public.article_variants_search_trigger() RETURNS trigger
-    LANGUAGE plpgsql
-    AS $$
-DECLARE
-    article_name TEXT;
-    article_master_code TEXT;
-    brand_name TEXT;
-BEGIN
-    SELECT a.name, a.code, b.name INTO article_name, article_master_code, brand_name
-    FROM articles a LEFT JOIN brands b ON a.brand_id = b.id
-    WHERE a.id = NEW.article_id;
-
-    NEW.search_vector := 
-        setweight(to_tsvector('spanish', coalesce(article_master_code, '')), 'A') || -- Máxima prioridad al Código Maestro
-        setweight(to_tsvector('spanish', coalesce(article_name, '')), 'A') ||
-        setweight(to_tsvector('spanish', coalesce(NEW.sku, '')), 'A') ||
-        setweight(to_tsvector('spanish', coalesce(NEW.barcode, '')), 'B') ||
-        setweight(to_tsvector('spanish', coalesce(brand_name, '')), 'C');
-    
-    RETURN NEW;
-END
-$$;
+-- -----------------------------------------------------------------------------
+-- DESHABILITADO (T2): article_variants_search_trigger
+-- La columna search_vector fue eliminada de article_variants en migraciones
+-- posteriores. Mantener esta función/trigger provoca fallos silenciosos en
+-- INSERT/UPDATE de variantes. Si la columna no existe, no ejecutar el bloque
+-- siguiente en BD; si ya existe el trigger, DROP TRIGGER + DROP FUNCTION.
+-- -----------------------------------------------------------------------------
+-- CREATE OR REPLACE FUNCTION public.article_variants_search_trigger() RETURNS trigger
+--     LANGUAGE plpgsql
+--     AS $$
+-- DECLARE
+--     article_name TEXT;
+--     article_master_code TEXT;
+--     brand_name TEXT;
+-- BEGIN
+--     SELECT a.name, a.code, b.name INTO article_name, article_master_code, brand_name
+--     FROM articles a LEFT JOIN brands b ON a.brand_id = b.id
+--     WHERE a.id = NEW.article_id;
+--
+--     NEW.search_vector := 
+--         setweight(to_tsvector('spanish', coalesce(article_master_code, '')), 'A') ||
+--         setweight(to_tsvector('spanish', coalesce(article_name, '')), 'A') ||
+--         setweight(to_tsvector('spanish', coalesce(NEW.sku, '')), 'A') ||
+--         setweight(to_tsvector('spanish', coalesce(NEW.barcode, '')), 'B') ||
+--         setweight(to_tsvector('spanish', coalesce(brand_name, '')), 'C');
+--     
+--     RETURN NEW;
+-- END
+-- $$;
+-- TRIGGER asociado (si existiera): DROP TRIGGER IF EXISTS ... ON article_variants;

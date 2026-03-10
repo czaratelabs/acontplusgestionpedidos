@@ -1,8 +1,14 @@
-import { Injectable, UnauthorizedException, ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  UnauthorizedException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
+import type { JwtSignOptions } from '@nestjs/jwt';
 import { UsersService } from '../users/users.service';
 import { CompaniesService } from '../companies/companies.service';
 import { RolesService } from '../roles/roles.service';
-import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { RegisterDto } from './dto/register.dto';
 
@@ -137,6 +143,97 @@ export class AuthService {
         role: primary.role,
         permissions: primary.permissions ?? {},
       },
+    };
+  }
+
+  /**
+   * Renueva el JWT a partir de un token expirado o próximo a expirar.
+   * Verifica la firma ignorando expiración (ventana de gracia); no acepta tokens de selección de empresa.
+   */
+  async refreshToken(oldToken: string): Promise<{ access_token: string }> {
+    const trimmed = (oldToken ?? '').trim();
+    if (!trimmed) {
+      throw new UnauthorizedException('Token requerido');
+    }
+    let payload: {
+      sub?: string;
+      purpose?: string;
+      username?: string;
+      name?: string;
+      companyId?: string | null;
+      role?: string;
+      permissions?: Record<string, unknown>;
+      isSuperAdmin?: boolean;
+    };
+    try {
+      payload = await this.jwtService.verifyAsync(trimmed, {
+        ignoreExpiration: true,
+      });
+    } catch {
+      throw new UnauthorizedException('Token inválido o corrupto');
+    }
+    if (payload.purpose === 'company_selection') {
+      throw new UnauthorizedException(
+        'Este token no se puede refrescar. Selecciona empresa de nuevo.',
+      );
+    }
+    if (!payload.sub) {
+      throw new UnauthorizedException('Token sin sujeto');
+    }
+    const user = await this.usersService.findOneById(payload.sub);
+    if (!user) throw new UnauthorizedException('Usuario no encontrado');
+
+    const signOptions: JwtSignOptions = { expiresIn: '8h' };
+    if (payload.isSuperAdmin === true || user.is_super_admin === true) {
+      const jwtPayload = {
+        sub: user.id,
+        username: user.email,
+        name: user.full_name,
+        companyId: null,
+        role: 'super_admin',
+        permissions: { '*': true },
+        isSuperAdmin: true,
+      };
+      return {
+        access_token: await this.jwtService.signAsync(jwtPayload, signOptions),
+      };
+    }
+
+    const companyId = payload.companyId ?? null;
+    if (companyId) {
+      const assignment = (user.userCompanies ?? []).find(
+        (uc) => uc.companyId === companyId && uc.isActive && uc.company,
+      );
+      if (!assignment) {
+        throw new UnauthorizedException('Sesión ya no válida para esta empresa');
+      }
+      const roleName = assignment.role?.name ?? payload.role ?? 'seller';
+      const permissions = assignment.role?.permissions ?? payload.permissions ?? {};
+      const jwtPayload = {
+        sub: user.id,
+        username: user.email,
+        name: user.full_name,
+        companyId: assignment.companyId,
+        role: roleName,
+        permissions,
+      };
+      return {
+        access_token: await this.jwtService.signAsync(jwtPayload, signOptions),
+      };
+    }
+
+    // Sin companyId en payload: reemitir con los mismos claims si el usuario sigue activo
+    const jwtPayload = {
+      sub: user.id,
+      username: user.email,
+      name: user.full_name,
+      companyId: null,
+      role: payload.role ?? 'seller',
+      permissions: payload.permissions ?? {},
+      ...(payload.isSuperAdmin ? { isSuperAdmin: true } : {}),
+    };
+    return {
+      access_token: await this.jwtService.signAsync(jwtPayload, signOptions),
     };
   }
 

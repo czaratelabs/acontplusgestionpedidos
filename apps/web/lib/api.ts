@@ -1,3 +1,7 @@
+/**
+ * API server-side (RSC/layout): fetch directo al backend con cookie de la request.
+ * Refresh con reintento: api-client + auth-interceptor (cliente vía /api proxy).
+ */
 import { headers } from "next/headers";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";

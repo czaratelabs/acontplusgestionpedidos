@@ -1,10 +1,10 @@
 /**
  * Cliente HTTP centralizado para Client Components.
- * - API_BASE desde NEXT_PUBLIC_API_URL
- * - credentials: 'include' en todas las peticiones
- * - Content-Type: application/json por defecto
- * - Interceptor 401 → redirect a /login
+ * - En navegador usa proxy /api/... para enviar cookie HttpOnly al backend.
+ * - Interceptor 401 → refresh en /api/auth/refresh → reintento; si falla, /login
  */
+
+import { fetchWithAuth } from "./auth-interceptor";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
@@ -13,8 +13,14 @@ export { API_BASE };
 type ApiOptions = RequestInit & { skip401Redirect?: boolean };
 
 function buildUrl(path: string): string {
-  if (path.startsWith("/api") || path.startsWith("http")) return path;
+  if (path.startsWith("http")) return path;
   const p = path.startsWith("/") ? path : `/${path}`;
+  // Rutas que ya son API Next (login, refresh, audit, etc.)
+  if (p.startsWith("/api")) return p;
+  // En cliente, proxy same-origin para que la cookie HttpOnly (refresh) llegue al backend
+  if (typeof window !== "undefined") {
+    return `/api${p}`;
+  }
   return API_BASE + p;
 }
 
@@ -53,7 +59,7 @@ async function handleResponse<T>(res: Response, skip401Redirect?: boolean): Prom
 }
 
 export async function apiGet<T = unknown>(url: string, opts?: ApiOptions): Promise<T> {
-  const res = await fetch(buildUrl(url), {
+  const res = await fetchWithAuth(buildUrl(url), {
     ...opts,
     method: "GET",
     credentials: "include",
@@ -63,7 +69,7 @@ export async function apiGet<T = unknown>(url: string, opts?: ApiOptions): Promi
 }
 
 export async function apiPost<T = unknown>(url: string, body?: unknown, opts?: ApiOptions): Promise<T> {
-  const res = await fetch(buildUrl(url), {
+  const res = await fetchWithAuth(buildUrl(url), {
     ...opts,
     method: "POST",
     credentials: "include",
@@ -74,7 +80,7 @@ export async function apiPost<T = unknown>(url: string, body?: unknown, opts?: A
 }
 
 export async function apiPatch<T = unknown>(url: string, body?: unknown, opts?: ApiOptions): Promise<T> {
-  const res = await fetch(buildUrl(url), {
+  const res = await fetchWithAuth(buildUrl(url), {
     ...opts,
     method: "PATCH",
     credentials: "include",
@@ -85,7 +91,7 @@ export async function apiPatch<T = unknown>(url: string, body?: unknown, opts?: 
 }
 
 export async function apiPut<T = unknown>(url: string, body?: unknown, opts?: ApiOptions): Promise<T> {
-  const res = await fetch(buildUrl(url), {
+  const res = await fetchWithAuth(buildUrl(url), {
     ...opts,
     method: "PUT",
     credentials: "include",
@@ -96,7 +102,7 @@ export async function apiPut<T = unknown>(url: string, body?: unknown, opts?: Ap
 }
 
 export async function apiDelete<T = unknown>(url: string, opts?: ApiOptions): Promise<T> {
-  const res = await fetch(buildUrl(url), {
+  const res = await fetchWithAuth(buildUrl(url), {
     ...opts,
     method: "DELETE",
     credentials: "include",
@@ -105,24 +111,20 @@ export async function apiDelete<T = unknown>(url: string, opts?: ApiOptions): Pr
   return handleResponse<T>(res, opts?.skip401Redirect);
 }
 
-/** Fetch raw Response (para casos que necesitan res.ok, res.status, etc.) */
+/** Fetch raw Response (401 con refresh + reintento) */
 export async function apiFetch(url: string, init?: RequestInit): Promise<Response> {
   const headers: Record<string, string> = { ...(init?.headers as Record<string, string>) };
   if (init?.body && typeof init.body === "string" && !headers["Content-Type"]) {
     headers["Content-Type"] = "application/json";
   }
-  const res = await fetch(buildUrl(url), {
+  return fetchWithAuth(buildUrl(url), {
     ...init,
     credentials: "include",
     headers,
   });
-  if (res.status === 401 && typeof window !== "undefined") {
-    window.location.href = "/login";
-  }
-  return res;
 }
 
-// --- Funciones de dominio (usan el cliente centralizado) ---
+// --- Funciones de dominio ---
 
 export async function getCompanyWarehouseLimitInfoClient(
   companyId: string

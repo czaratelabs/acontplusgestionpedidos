@@ -4,7 +4,7 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Brackets } from 'typeorm';
+import { Repository, Brackets, DataSource } from 'typeorm';
 import { Article } from './entities/article.entity';
 import { ArticleVariant } from './entities/article-variant.entity';
 import { ArticleVariantPrice } from './entities/article-variant-price.entity';
@@ -22,6 +22,7 @@ import { CompaniesService } from '../companies/companies.service';
 @Injectable()
 export class ArticlesService {
   constructor(
+    private readonly dataSource: DataSource,
     @InjectRepository(Article)
     private readonly articleRepo: Repository<Article>,
     @InjectRepository(ArticleVariant)
@@ -461,33 +462,44 @@ export class ArticlesService {
       weight: dto.weight ?? 0,
       observations: dto.observations?.trim() || null,
     });
-    const savedV = await this.variantRepo.save(variant);
 
     const pdto = dto.prices;
-    const price = this.priceRepo.create({
-      articleVariantId: savedV.id,
-      precioVenta1: pdto?.precioVenta1 ?? 0,
-      precioVenta2: pdto?.precioVenta2 ?? 0,
-      precioVenta3: pdto?.precioVenta3 ?? 0,
-      precioVenta4: pdto?.precioVenta4 ?? 0,
-      precioVenta5: pdto?.precioVenta5 ?? 0,
-      pvp1: pdto?.pvp1 ?? 0,
-      pvp2: pdto?.pvp2 ?? 0,
-      pvp3: pdto?.pvp3 ?? 0,
-      pvp4: pdto?.pvp4 ?? 0,
-      pvp5: pdto?.pvp5 ?? 0,
-    });
-    await this.priceRepo.save(price);
 
-    for (const eb of extraBarcodes) {
-      const bc = (eb.barcode ?? '').trim();
-      if (!bc) continue;
-      const barcodeRow = this.barcodeRepo.create({
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+    try {
+      const savedV = await queryRunner.manager.save(ArticleVariant, variant);
+      const priceEntity = this.priceRepo.create({
         articleVariantId: savedV.id,
-        barcode: bc,
-        description: (eb.description ?? '').trim() || null,
+        precioVenta1: pdto?.precioVenta1 ?? 0,
+        precioVenta2: pdto?.precioVenta2 ?? 0,
+        precioVenta3: pdto?.precioVenta3 ?? 0,
+        precioVenta4: pdto?.precioVenta4 ?? 0,
+        precioVenta5: pdto?.precioVenta5 ?? 0,
+        pvp1: pdto?.pvp1 ?? 0,
+        pvp2: pdto?.pvp2 ?? 0,
+        pvp3: pdto?.pvp3 ?? 0,
+        pvp4: pdto?.pvp4 ?? 0,
+        pvp5: pdto?.pvp5 ?? 0,
       });
-      await this.barcodeRepo.save(barcodeRow);
+      await queryRunner.manager.save(ArticleVariantPrice, priceEntity);
+      for (const eb of extraBarcodes) {
+        const bc = (eb.barcode ?? '').trim();
+        if (!bc) continue;
+        const barcodeRow = this.barcodeRepo.create({
+          articleVariantId: savedV.id,
+          barcode: bc,
+          description: (eb.description ?? '').trim() || null,
+        });
+        await queryRunner.manager.save(ArticleVariantBarcode, barcodeRow);
+      }
+      await queryRunner.commitTransaction();
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
     }
 
     return this.findOne(articleId);
@@ -531,32 +543,10 @@ export class ArticlesService {
     if (dto.observations !== undefined) variant.observations = dto.observations?.trim() || null;
     if (variant.article?.code) variant.articleCode = variant.article.code;
 
-    await this.variantRepo.save(variant);
-
-    if (dto.barcodes !== undefined) {
-      const extraBarcodes = dto.barcodes ?? [];
-      for (const eb of extraBarcodes) {
-        const bc = (eb.barcode ?? '').trim();
-        if (!bc) continue;
-        const ok = await this.isBarcodeAvailable(companyId, bc, variantId);
-        if (!ok) throw new ConflictException(`El código de barras "${bc}" ya está asignado a otro artículo o variante`);
-      }
-      await this.barcodeRepo.delete({ articleVariantId: variantId });
-      for (const eb of extraBarcodes) {
-        const bc = (eb.barcode ?? '').trim();
-        if (!bc) continue;
-        const barcodeRow = this.barcodeRepo.create({
-          articleVariantId: variantId,
-          barcode: bc,
-          description: (eb.description ?? '').trim() || null,
-        });
-        await this.barcodeRepo.save(barcodeRow);
-      }
-    }
-
     const pdto = dto.prices;
+    let existingPrice: ArticleVariantPrice | null = null;
     if (pdto) {
-      const existingPrice = await this.priceRepo.findOne({ where: { articleVariantId: variantId } });
+      existingPrice = await this.priceRepo.findOne({ where: { articleVariantId: variantId } });
       if (existingPrice) {
         if (pdto.precioVenta1 != null) existingPrice.precioVenta1 = pdto.precioVenta1;
         if (pdto.precioVenta2 != null) existingPrice.precioVenta2 = pdto.precioVenta2;
@@ -568,8 +558,40 @@ export class ArticlesService {
         if (pdto.pvp3 != null) existingPrice.pvp3 = pdto.pvp3;
         if (pdto.pvp4 != null) existingPrice.pvp4 = pdto.pvp4;
         if (pdto.pvp5 != null) existingPrice.pvp5 = pdto.pvp5;
-        await this.priceRepo.save(existingPrice);
       }
+    }
+
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+    try {
+      await queryRunner.manager.save(ArticleVariant, variant);
+
+      if (dto.barcodes !== undefined) {
+        const extraBarcodes = dto.barcodes ?? [];
+        await queryRunner.manager.delete(ArticleVariantBarcode, { articleVariantId: variantId });
+        for (const eb of extraBarcodes) {
+          const bc = (eb.barcode ?? '').trim();
+          if (!bc) continue;
+          const barcodeRow = this.barcodeRepo.create({
+            articleVariantId: variantId,
+            barcode: bc,
+            description: (eb.description ?? '').trim() || null,
+          });
+          await queryRunner.manager.save(ArticleVariantBarcode, barcodeRow);
+        }
+      }
+
+      if (existingPrice) {
+        await queryRunner.manager.save(ArticleVariantPrice, existingPrice);
+      }
+
+      await queryRunner.commitTransaction();
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
     }
 
     return this.findOne(variant.articleId);

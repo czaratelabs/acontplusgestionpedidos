@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
+import { DataSource } from 'typeorm';
 import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { ArticlesService } from './articles.service';
 import { CompaniesService } from '../companies/companies.service';
@@ -104,8 +105,29 @@ describe('ArticlesService', () => {
     const imageRepo = { findOne: jest.fn(), create: jest.fn(), save: jest.fn(), update: jest.fn(), remove: jest.fn() };
     const batchRepo = { findOne: jest.fn(), create: jest.fn(), save: jest.fn(), remove: jest.fn() };
 
+    const managerSave = jest.fn().mockImplementation((_entity, row: unknown) => {
+      const r = row as { id?: string };
+      if (r && !r.id && typeof r === 'object') (r as { id: string }).id = 'mock-id';
+      return Promise.resolve(row);
+    });
+    const managerDelete = jest.fn().mockResolvedValue(undefined);
+    const mockDataSource = {
+      createQueryRunner: jest.fn().mockReturnValue({
+        connect: jest.fn().mockResolvedValue(undefined),
+        startTransaction: jest.fn().mockResolvedValue(undefined),
+        commitTransaction: jest.fn().mockResolvedValue(undefined),
+        rollbackTransaction: jest.fn().mockResolvedValue(undefined),
+        release: jest.fn().mockResolvedValue(undefined),
+        manager: {
+          save: managerSave,
+          delete: managerDelete,
+        },
+      }),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
+        { provide: DataSource, useValue: mockDataSource },
         ArticlesService,
         {
           provide: getRepositoryToken(Article),

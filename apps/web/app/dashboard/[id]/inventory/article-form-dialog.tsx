@@ -24,6 +24,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { CatalogSelectWithCreate } from "@/components/catalog-select-with-create";
+import { VariantsTabBanner } from "@/components/articles/VariantsTabBanner";
 import type { CatalogItem } from "@/lib/api-client";
 import {
   Card,
@@ -62,10 +63,26 @@ import {
   apiFetch,
   API_BASE,
 } from "@/lib/api-client";
+import {
+  type PricesRow,
+  type VariantRow,
+  type ArticleImage,
+  type Batch,
+  type FractionConfig,
+  type AdditionalBarcode,
+  TARIFAS_KEYS,
+  emptyPrices,
+  emptyVariant,
+} from "@/lib/types/article.types";
+import type {
+  ArticleFormBrand as Brand,
+  ArticleFormCategory as Category,
+  ArticleFormTax as Tax,
+} from "@/lib/types/article.types";
+import { usePriceCalculation, getFractionCost } from "@/lib/hooks/usePriceCalculation";
 
 const TARIFF_NAMES_KEY = "TARIFF_NAMES";
 const TARIFF_PROFITABILITY_KEY = "TARIFF_PROFITABILITY";
-const TARIFAS_KEYS = [1, 2, 3, 4, 5] as const;
 const DEFAULT_TARIFF_LABELS: Record<string, string> = {
   "1": "Tarifa 1",
   "2": "Tarifa 2",
@@ -73,123 +90,6 @@ const DEFAULT_TARIFF_LABELS: Record<string, string> = {
   "4": "Tarifa 4",
   "5": "Tarifa 5",
 };
-
-type PricesRow = {
-  precioVenta1: string;
-  precioVenta2: string;
-  precioVenta3: string;
-  precioVenta4: string;
-  precioVenta5: string;
-  pvp1: string;
-  pvp2: string;
-  pvp3: string;
-  pvp4: string;
-  pvp5: string;
-  porcentajeRentabilidad1?: string;
-  porcentajeRentabilidad2?: string;
-  porcentajeRentabilidad3?: string;
-  porcentajeRentabilidad4?: string;
-  porcentajeRentabilidad5?: string;
-  rentabilidad1?: string;
-  rentabilidad2?: string;
-  rentabilidad3?: string;
-  rentabilidad4?: string;
-  rentabilidad5?: string;
-  rentabilidadIncIva1?: string;
-  rentabilidadIncIva2?: string;
-  rentabilidadIncIva3?: string;
-  rentabilidadIncIva4?: string;
-  rentabilidadIncIva5?: string;
-};
-
-const emptyPrices = (): PricesRow => ({
-  precioVenta1: "0",
-  precioVenta2: "0",
-  precioVenta3: "0",
-  precioVenta4: "0",
-  precioVenta5: "0",
-  pvp1: "0",
-  pvp2: "0",
-  pvp3: "0",
-  pvp4: "0",
-  pvp5: "0",
-  porcentajeRentabilidad1: "0",
-  porcentajeRentabilidad2: "0",
-  porcentajeRentabilidad3: "0",
-  porcentajeRentabilidad4: "0",
-  porcentajeRentabilidad5: "0",
-  rentabilidad1: "0",
-  rentabilidad2: "0",
-  rentabilidad3: "0",
-  rentabilidad4: "0",
-  rentabilidad5: "0",
-  rentabilidadIncIva1: "0",
-  rentabilidadIncIva2: "0",
-  rentabilidadIncIva3: "0",
-  rentabilidadIncIva4: "0",
-  rentabilidadIncIva5: "0",
-});
-
-type Brand = { id: string; name: string };
-type Category = { id: string; name: string; siglas?: string; secuencial?: number; secuencial_variantes?: number; secuencialVariantes?: number };
-type Tax = { id: string; name: string; percentage: number };
-
-type ArticleImage = { id: string; url: string; isMain: boolean; sortOrder: number };
-type Batch = {
-  id: string;
-  batchNumber: string;
-  expirationDate: string | null;
-  currentStock: number;
-};
-
-type AdditionalBarcode = { barcode: string; description: string };
-
-/** Configuración de unidad fraccionaria (ej. venta por metro desde rollo). */
-type FractionConfig = {
-  fraction_name: string;
-  conversion_factor: string;
-};
-
-type VariantRow = {
-  id?: string;
-  sku: string;
-  barcode: string;
-  /** Códigos de barras adicionales (opcional descripción, ej. "Strawberry Flavor") */
-  additionalBarcodes: AdditionalBarcode[];
-  cost: string;
-  /** Valor mostrado para INC IVA; si no está definido se deriva de cost. Sincronizado bidireccionalmente con cost. */
-  costIncIva?: string;
-  colorId: string;
-  sizeId: string;
-  flavorId: string;
-  measureId: string;
-  weight: string;
-  observations: string;
-  prices: PricesRow;
-  /** Unidades fraccionarias activadas (ej. venta por metro). */
-  fractionEnabled?: boolean;
-  /** Lista de fracciones (nombre sub-unidad + factor). fraction_cost = base_cost * conversion_factor. */
-  fractions: FractionConfig[];
-  /** Precios PVP por tarifa para la primera fracción (misma lógica que prices). */
-  fractionPrices: PricesRow;
-};
-
-const emptyVariant = (): VariantRow => ({
-  sku: "",
-  barcode: "",
-  additionalBarcodes: [],
-  cost: "0",
-  colorId: "",
-  sizeId: "",
-  flavorId: "",
-  measureId: "",
-  weight: "0",
-  observations: "",
-  prices: emptyPrices(),
-  fractionEnabled: false,
-  fractions: [],
-  fractionPrices: emptyPrices(),
-});
 
 function getBatchRowClass(expirationDate: string | null): string {
   if (!expirationDate) return "";
@@ -366,6 +266,24 @@ export function ArticleFormDialog({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
   const { toast } = useToast();
+  const pricing = usePriceCalculation({
+    variants,
+    setVariants,
+    taxId,
+    taxes,
+    toast,
+  });
+  const {
+    handleSalePriceCalculation,
+    handlePvpCalculation,
+    handleCostToPriceCalculation,
+    applyPctRentBlurOrEnter,
+    applyPvpCellBlurOrEnter,
+    refreshRentabilidadOnCostBlur,
+    handleFractionSalePriceCalculation,
+    handleFractionPvpCalculation,
+    applyFractionPctRentBlurOrEnter,
+  } = pricing;
   const effectiveArticleId = initialData?.id ?? savedArticleId ?? null;
   const isEditing = Boolean(initialData) || Boolean(savedArticleId);
   /** General tab fields are read-only when existing article and not in edit mode. */
@@ -1255,14 +1173,6 @@ export function ArticleFormDialog({
     setEditingBarcodeDescription(null);
   }
 
-  /** Coste de la primera fracción: base_cost * conversion_factor. */
-  function getFractionCost(v: VariantRow): number {
-    const cost = parseFloat(String(v.cost ?? "0")) || 0;
-    const first = (v.fractions ?? [])[0];
-    const factor = first ? parseFloat(String(first.conversion_factor ?? "0").replace(",", ".")) || 0 : 0;
-    return roundToFive(cost * factor, 5);
-  }
-
   /** Activa/desactiva unidades fraccionarias. Al activar, añade una fracción si la lista está vacía. */
   function toggleFractionEnabled(variantIndex: number) {
     const v = variants[variantIndex];
@@ -1352,328 +1262,7 @@ export function ArticleFormDialog({
     );
   }
 
-  /**
-   * handleSalePriceCalculation: dispara al pulsar Enter o blur en celda Precio de Venta.
-   * Afecta solo a la fila actual. Validación: vacío, 0 o < cost → poner todo a 0.
-   * Si válido: PVP = precio_venta * (1 + IVA), % Rent, Valor Rent, Valor Rent INC IVA.
-   * Usa roundToFive en todos los resultados.
-   */
-  function handleSalePriceCalculation(variantIndex: number, key: number) {
-    const v = variants[variantIndex];
-    if (!v) return;
-    const cost = roundToFive(parseFloat(String(v.cost)) || 0, 5);
-    const ivaPct = taxId ? (taxes.find((t) => t.id === taxId)?.percentage ?? 0) : 0;
-    const costIncIva = ivaPct !== 0 ? roundToFive(cost * (1 + ivaPct / 100), 5) : cost;
-
-    const raw = v.prices[`precioVenta${key}` as keyof PricesRow];
-    const precioVentaNum = parseFloat(String(raw ?? "")) || 0;
-    const isEmpty = raw === "" || raw == null;
-    const isInvalid = isEmpty || precioVentaNum <= 0 || precioVentaNum <= cost;
-
-    setVariants((prev) => {
-      const next = [...prev];
-      const curr = next[variantIndex];
-      if (!curr?.prices) return prev;
-      const prices = { ...(curr.prices as Record<string, string>) };
-
-      if (isInvalid) {
-        prices[`precioVenta${key}`] = "0";
-        prices[`pvp${key}`] = "0";
-        prices[`porcentajeRentabilidad${key}`] = "0";
-        prices[`rentabilidad${key}`] = "0";
-        prices[`rentabilidadIncIva${key}`] = "0";
-      } else {
-        const pv = roundToFive(precioVentaNum, 5);
-        const pvp = roundToFive(pv * (1 + ivaPct / 100), 5);
-        const pctRent = cost > 0 ? roundToFive(((pv - cost) / cost) * 100, 5) : 0;
-        const valorRent = roundToFive(pv - cost, 5);
-        const valorRentIncIva = roundToFive(pvp - costIncIva, 5);
-
-        prices[`precioVenta${key}`] = formatDecimal(pv);
-        prices[`pvp${key}`] = formatDecimal(pvp);
-        prices[`porcentajeRentabilidad${key}`] = formatDecimal(pctRent);
-        prices[`rentabilidad${key}`] = formatDecimal(valorRent);
-        prices[`rentabilidadIncIva${key}`] = formatDecimal(valorRentIncIva);
-      }
-
-      next[variantIndex] = { ...curr, prices: prices as PricesRow };
-      return next;
-    });
-  }
-
-  /** Misma lógica que handleSalePriceCalculation pero para precios de la fracción (usa fraction cost). */
-  function handleFractionSalePriceCalculation(variantIndex: number, key: number) {
-    const v = variants[variantIndex];
-    if (!v?.fractionEnabled || (v.fractions ?? []).length === 0) return;
-    const cost = getFractionCost(v);
-    const ivaPct = taxId ? (taxes.find((t) => t.id === taxId)?.percentage ?? 0) : 0;
-    const costIncIva = ivaPct !== 0 ? roundToFive(cost * (1 + ivaPct / 100), 5) : cost;
-
-    const raw = (v.fractionPrices ?? emptyPrices())[`precioVenta${key}` as keyof PricesRow];
-    const precioVentaNum = parseFloat(String(raw ?? "")) || 0;
-    const isEmpty = raw === "" || raw == null;
-    const isInvalid = isEmpty || precioVentaNum <= 0 || precioVentaNum <= cost;
-
-    setVariants((prev) => {
-      const next = [...prev];
-      const curr = next[variantIndex];
-      if (!curr?.fractionPrices) return prev;
-      const prices = { ...(curr.fractionPrices as Record<string, string>) };
-
-      if (isInvalid) {
-        prices[`precioVenta${key}`] = "0";
-        prices[`pvp${key}`] = "0";
-        prices[`porcentajeRentabilidad${key}`] = "0";
-        prices[`rentabilidad${key}`] = "0";
-        prices[`rentabilidadIncIva${key}`] = "0";
-      } else {
-        const pv = roundToFive(precioVentaNum, 5);
-        const pvp = roundToFive(pv * (1 + ivaPct / 100), 5);
-        const pctRent = cost > 0 ? roundToFive(((pv - cost) / cost) * 100, 5) : 0;
-        const valorRent = roundToFive(pv - cost, 5);
-        const valorRentIncIva = roundToFive(pvp - costIncIva, 5);
-
-        prices[`precioVenta${key}`] = formatDecimal(pv);
-        prices[`pvp${key}`] = formatDecimal(pvp);
-        prices[`porcentajeRentabilidad${key}`] = formatDecimal(pctRent);
-        prices[`rentabilidad${key}`] = formatDecimal(valorRent);
-        prices[`rentabilidadIncIva${key}`] = formatDecimal(valorRentIncIva);
-      }
-
-      next[variantIndex] = { ...curr, fractionPrices: prices as PricesRow };
-      return next;
-    });
-  }
-
-  /** Misma lógica que handlePvpCalculation pero para PVP de la fracción. */
-  function handleFractionPvpCalculation(variantIndex: number, rowIndex: number) {
-    const v = variants[variantIndex];
-    if (!v?.fractionEnabled || (v.fractions ?? []).length === 0) return;
-    const cost = getFractionCost(v);
-    const ivaPct = taxId ? (taxes.find((t) => t.id === taxId)?.percentage ?? 0) : 0;
-    const costIncIva = ivaPct !== 0 ? roundToFive(cost * (1 + ivaPct / 100), 5) : cost;
-
-    const raw = (v.fractionPrices ?? emptyPrices())[`pvp${rowIndex}` as keyof PricesRow];
-    const pvpNum = parseFloat(String(raw ?? "")) || 0;
-    const isEmpty = raw === "" || raw == null;
-    const isInvalid = isEmpty || pvpNum <= 0 || pvpNum <= costIncIva;
-
-    setVariants((prev) => {
-      const next = [...prev];
-      const curr = next[variantIndex];
-      if (!curr?.fractionPrices) return prev;
-      const prices = { ...(curr.fractionPrices as Record<string, string>) };
-
-      if (isInvalid) {
-        prices[`precioVenta${rowIndex}`] = "0";
-        prices[`pvp${rowIndex}`] = "0";
-        prices[`porcentajeRentabilidad${rowIndex}`] = "0";
-        prices[`rentabilidad${rowIndex}`] = "0";
-        prices[`rentabilidadIncIva${rowIndex}`] = "0";
-      } else {
-        const pvp = roundToFive(pvpNum, 5);
-        const precioVenta = ivaPct !== 0 ? roundToFive(pvp / (1 + ivaPct / 100), 5) : pvp;
-        const pctRent = cost > 0 ? roundToFive(((precioVenta - cost) / cost) * 100, 5) : 0;
-        const valorRent = roundToFive(precioVenta - cost, 5);
-        const valorRentIncIva = roundToFive(pvp - costIncIva, 5);
-
-        prices[`precioVenta${rowIndex}`] = formatDecimal(precioVenta);
-        prices[`pvp${rowIndex}`] = formatDecimal(pvp);
-        prices[`porcentajeRentabilidad${rowIndex}`] = formatDecimal(pctRent);
-        prices[`rentabilidad${rowIndex}`] = formatDecimal(valorRent);
-        prices[`rentabilidadIncIva${rowIndex}`] = formatDecimal(valorRentIncIva);
-      }
-
-      next[variantIndex] = { ...curr, fractionPrices: prices as PricesRow };
-      return next;
-    });
-  }
-
-  /** Misma lógica que applyPctRentBlurOrEnter pero para % Rent de la fracción. */
-  function applyFractionPctRentBlurOrEnter(variantIndex: number, key: number) {
-    const v = variants[variantIndex];
-    if (!v?.fractionEnabled || (v.fractions ?? []).length === 0) return;
-    const raw = (v.fractionPrices ?? emptyPrices())[`porcentajeRentabilidad${key}` as keyof PricesRow];
-    const numVal = parseFloat(String(raw ?? "")) || 0;
-    const finalVal = numVal < 0 || raw === "" || raw == null ? 0 : numVal;
-
-    if (finalVal === 0) {
-      setVariants((prev) => {
-        const next = [...prev];
-        const curr = next[variantIndex];
-        if (!curr?.fractionPrices) return prev;
-        const prices = { ...(curr.fractionPrices as Record<string, string>) };
-        prices[`porcentajeRentabilidad${key}`] = "0";
-        prices[`precioVenta${key}`] = "0";
-        prices[`pvp${key}`] = "0";
-        prices[`rentabilidad${key}`] = "0";
-        prices[`rentabilidadIncIva${key}`] = "0";
-        next[variantIndex] = { ...curr, fractionPrices: prices as PricesRow };
-        return next;
-      });
-    } else {
-      const cost = getFractionCost(v);
-      const ivaPct = taxId ? (taxes.find((t) => t.id === taxId)?.percentage ?? 0) : 0;
-      const costIncIva = ivaPct !== 0 ? roundToFive(cost * (1 + ivaPct / 100), 5) : cost;
-      const precioVenta = cost > 0 ? roundToFive(cost * (1 + finalVal / 100), 5) : 0;
-      const pvp = ivaPct !== 0 ? roundToFive(precioVenta * (1 + ivaPct / 100), 5) : precioVenta;
-      const valorRent = roundToFive(precioVenta - cost, 5);
-      const valorRentIncIva = roundToFive(pvp - costIncIva, 5);
-      setVariants((prev) => {
-        const next = [...prev];
-        const curr = next[variantIndex];
-        if (!curr?.fractionPrices) return prev;
-        const prices = { ...(curr.fractionPrices as Record<string, string>) };
-        prices[`porcentajeRentabilidad${key}`] = formatDecimal(finalVal);
-        prices[`precioVenta${key}`] = formatDecimal(precioVenta);
-        prices[`pvp${key}`] = formatDecimal(pvp);
-        prices[`rentabilidad${key}`] = formatDecimal(valorRent);
-        prices[`rentabilidadIncIva${key}`] = formatDecimal(valorRentIncIva);
-        next[variantIndex] = { ...curr, fractionPrices: prices as PricesRow };
-        return next;
-      });
-    }
-  }
-
-  /**
-   * handlePvpCalculation: dispara al pulsar Enter o blur en celda PVP.
-   * Afecta solo a la fila actual. Validación: vacío, 0 o < cost_inc_iva → poner todo a 0.
-   * Si válido: precio_venta = pvp/(1+IVA), % Rent (markup), Valor Rent, Valor Rent INC IVA.
-   * Usa roundToFive en todos los resultados.
-   */
-  function handlePvpCalculation(variantIndex: number, rowIndex: number) {
-    const v = variants[variantIndex];
-    if (!v) return;
-    const cost = roundToFive(parseFloat(String(v.cost)) || 0, 5);
-    const ivaPct = taxId ? (taxes.find((t) => t.id === taxId)?.percentage ?? 0) : 0;
-    const costIncIva = ivaPct !== 0 ? roundToFive(cost * (1 + ivaPct / 100), 5) : cost;
-
-    const raw = v.prices[`pvp${rowIndex}` as keyof PricesRow];
-    const pvpNum = parseFloat(String(raw ?? "")) || 0;
-    const isEmpty = raw === "" || raw == null;
-    const isInvalid = isEmpty || pvpNum <= 0 || pvpNum <= costIncIva;
-
-    setVariants((prev) => {
-      const next = [...prev];
-      const curr = next[variantIndex];
-      if (!curr?.prices) return prev;
-      const prices = { ...(curr.prices as Record<string, string>) };
-
-      if (isInvalid) {
-        prices[`precioVenta${rowIndex}`] = "0";
-        prices[`pvp${rowIndex}`] = "0";
-        prices[`porcentajeRentabilidad${rowIndex}`] = "0";
-        prices[`rentabilidad${rowIndex}`] = "0";
-        prices[`rentabilidadIncIva${rowIndex}`] = "0";
-      } else {
-        const pvp = roundToFive(pvpNum, 5);
-        const precioVenta = ivaPct !== 0 ? roundToFive(pvp / (1 + ivaPct / 100), 5) : pvp;
-        const pctRent = cost > 0 ? roundToFive(((precioVenta - cost) / cost) * 100, 5) : 0;
-        const valorRent = roundToFive(precioVenta - cost, 5);
-        const valorRentIncIva = roundToFive(pvp - costIncIva, 5);
-
-        prices[`precioVenta${rowIndex}`] = formatDecimal(precioVenta);
-        prices[`pvp${rowIndex}`] = formatDecimal(pvp);
-        prices[`porcentajeRentabilidad${rowIndex}`] = formatDecimal(pctRent);
-        prices[`rentabilidad${rowIndex}`] = formatDecimal(valorRent);
-        prices[`rentabilidadIncIva${rowIndex}`] = formatDecimal(valorRentIncIva);
-      }
-
-      next[variantIndex] = { ...curr, prices: prices as PricesRow };
-      return next;
-    });
-  }
-
-  /** Dispara recalc desde una celda PVP con Manual Input Preservation: el campo editado mantiene su valor raw. Sin redirección de foco para permitir navegación libre. */
-  function applyPvpCellBlurOrEnter(
-    variantIndex: number,
-    preserveField: "pctRent" | "precioVenta" | "pvp",
-    key: number,
-  ) {
-    refreshRentabilidadOnCostBlur(variantIndex, undefined, { field: preserveField, key });
-  }
-
-  /**
-   * Validación estricta para % Rent: default to zero, zero-value short circuit.
-   * - Si vacío o < 0: normalizar a 0.
-   * - Si valor = 0: limpiar fila (Precio Venta, PVP, rentabilidades a 0) sin cálculo.
-   * - Si valor > 0: ejecutar cálculo completo.
-   */
-  function applyPctRentBlurOrEnter(variantIndex: number, key: number) {
-    const v = variants[variantIndex];
-    if (!v) return;
-    const raw = v.prices[`porcentajeRentabilidad${key}` as keyof PricesRow];
-    const numVal = parseFloat(String(raw ?? "")) || 0;
-    const finalVal = numVal < 0 || raw === "" || raw == null ? 0 : numVal;
-
-    if (finalVal === 0) {
-      setVariants((prev) => {
-        const next = [...prev];
-        const curr = next[variantIndex];
-        if (!curr?.prices) return prev;
-        const prices = { ...(curr.prices as Record<string, string>) };
-        prices[`porcentajeRentabilidad${key}`] = "0";
-        prices[`precioVenta${key}`] = "0";
-        prices[`pvp${key}`] = "0";
-        prices[`rentabilidad${key}`] = "0";
-        prices[`rentabilidadIncIva${key}`] = "0";
-        next[variantIndex] = { ...curr, prices: prices as PricesRow };
-        return next;
-      });
-    } else {
-      applyPvpCellBlurOrEnter(variantIndex, "pctRent", key);
-    }
-  }
-
-  /**
-   * Función unificada: Input Cost → Calcular 5 tarifas → Redondear (numeric 18,4) → Mover foco a PVP1.
-   * Única responsable del cálculo desde coste. Usada por ambos campos (SIN IVA e INC IVA).
-   * @param source Si "incIva", toma costSinIva desde costIncIva para evitar race con state asíncrono.
-   */
-  function handleCostToPriceCalculation(
-    variantIndex: number,
-    source?: "sinIva" | "incIva",
-    moveFocus?: boolean,
-  ) {
-    const v = variants[variantIndex];
-    if (!v) return;
-    const ivaPct = taxId ? (taxes.find((t) => t.id === taxId)?.percentage ?? 0) : 0;
-
-    let costSinIva: number;
-    if (source === "incIva") {
-      const rawIncIva = parseFloat(String(v.costIncIva ?? v.cost)) || 0;
-      costSinIva = roundToFive(costIncIvaToCost(rawIncIva, ivaPct), 5);
-    } else {
-      costSinIva = roundToFive(parseFloat(String(v.cost)) || 0, 5);
-    }
-
-    refreshRentabilidadOnCostBlur(variantIndex, costSinIva);
-    if (moveFocus) focusPvp1WithScroll(variantIndex);
-  }
-
-  /** Mueve el foco a pvp1 (primera celda PVP de la tabla Tarifas PVP) con scroll suave. */
-  function focusPvp1WithScroll(variantIndex: number) {
-    setTimeout(() => {
-      const el = document.getElementById(`pvp-${variantIndex}-1`);
-      if (el instanceof HTMLInputElement) {
-        el.scrollIntoView({ behavior: "smooth", block: "nearest" });
-        el.focus();
-      }
-    }, 0);
-  }
-
-  /** Mueve el foco a precio_venta1 (primera celda Precio Venta) con scroll suave. */
-  function focusPrecioVenta1WithScroll(variantIndex: number) {
-    setTimeout(() => {
-      const el = document.getElementById(`precioVenta-${variantIndex}-1`);
-      if (el instanceof HTMLInputElement) {
-        el.scrollIntoView({ behavior: "smooth", block: "nearest" });
-        el.focus();
-      }
-    }, 0);
-  }
-
-  /** Navegación vertical: Enter mueve al siguiente row o vuelve a 1 si está en 5. */
+  /** Navegación vertical en celdas de precio / % Rent (keyboard). */
   function focusPriceCellBelow(
     variantIndex: number,
     column: "precioVenta" | "pvp",
@@ -1688,8 +1277,6 @@ export function ArticleFormDialog({
       }
     }, 0);
   }
-
-  /** Navegación vertical en % Rent: Enter mueve al siguiente row o vuelve a 1 si está en 5. */
   function focusPctRentBelow(variantIndex: number, currentKey: number) {
     setTimeout(() => {
       const nextKey = currentKey < 5 ? currentKey + 1 : 1;
@@ -1701,132 +1288,6 @@ export function ArticleFormDialog({
     }, 0);
   }
 
-  type PreserveSourceField = { field: "pctRent" | "precioVenta" | "pvp"; key: number };
-
-  function refreshRentabilidadOnCostBlur(
-    variantIndex: number,
-    costOverride?: string | number,
-    preserveSourceField?: PreserveSourceField,
-  ): boolean {
-    const v = variants[variantIndex];
-    if (!v) return false;
-    const cost = costOverride != null ? parseFloat(String(costOverride)) || 0 : parseFloat(v.cost) || 0;
-    const ivaPct = taxId ? (taxes.find((t) => t.id === taxId)?.percentage ?? 0) : 0;
-    const costIncIva = ivaPct !== 0 ? cost * (1 + ivaPct / 100) : cost;
-
-    if (cost <= 0 || costIncIva <= 0) {
-      toast({
-        title: "Costo inválido",
-        description: "El Precio de Costo SIN IVA e INC IVA debe ser mayor a cero.",
-        variant: "destructive",
-      });
-      const updatedPrices: Record<string, string> = { ...v.prices } as Record<string, string>;
-      for (const key of TARIFAS_KEYS) {
-        updatedPrices[`precioVenta${key}`] = "0";
-        updatedPrices[`pvp${key}`] = "0";
-        updatedPrices[`porcentajeRentabilidad${key}`] = "0";
-        updatedPrices[`rentabilidad${key}`] = "0";
-        updatedPrices[`rentabilidadIncIva${key}`] = "0";
-      }
-      setVariants((prev) => {
-        const next = [...prev];
-        const curr = next[variantIndex];
-        if (!curr?.prices) return prev;
-        next[variantIndex] = { ...curr, prices: updatedPrices as PricesRow };
-        return next;
-      });
-      return false;
-    }
-
-    const updatedPrices: Record<string, string> = { ...v.prices } as Record<string, string>;
-    for (const key of TARIFAS_KEYS) {
-      const preserve = preserveSourceField?.key === key ? preserveSourceField.field : null;
-
-      // Manual Input Preservation: nunca sobrescribir el campo fuente — mantener valor raw del usuario.
-      const pctRent = parseFloat(v.prices[`porcentajeRentabilidad${key}` as keyof PricesRow] ?? "0") || 0;
-      if (preserve !== "pctRent" && pctRent <= 0) {
-        if (preserve !== "precioVenta") updatedPrices[`precioVenta${key}`] = "0";
-        if (preserve !== "pvp") updatedPrices[`pvp${key}`] = "0";
-        updatedPrices[`rentabilidad${key}`] = "0";
-        updatedPrices[`rentabilidadIncIva${key}`] = "0";
-        continue;
-      }
-
-      let precioVenta: number;
-      let pvp: number;
-
-      if (preserve === "precioVenta") {
-        precioVenta = parseFloat(updatedPrices[`precioVenta${key}`] ?? "0") || 0;
-        pvp = ivaPct === 0 ? precioVenta : precioVenta * (1 + ivaPct / 100);
-      } else if (preserve === "pvp") {
-        pvp = parseFloat(updatedPrices[`pvp${key}`] ?? "0") || 0;
-        precioVenta = ivaPct === 0 ? pvp : pvp / (1 + ivaPct / 100);
-      } else {
-        precioVenta = cost + cost * (pctRent / 100);
-        pvp = ivaPct === 0 ? precioVenta : precioVenta * (1 + ivaPct / 100);
-      }
-
-      const valorRent = roundToFive(precioVenta - cost, 5);
-      const valorRentIncIva = roundToFive(pvp - costIncIva, 5);
-
-      if (preserve !== "precioVenta") updatedPrices[`precioVenta${key}`] = formatDecimal(roundToFive(precioVenta, 5));
-      if (preserve !== "pvp") updatedPrices[`pvp${key}`] = formatDecimal(roundToFive(pvp, 5));
-      // Recalcular % Rent cuando la fuente es Precio de Venta o PVP: ((precioVenta - cost) / precioVenta) * 100
-      if (preserve === "precioVenta" || preserve === "pvp") {
-        const pctRentCalculated =
-          precioVenta > 0 ? roundToFive(((precioVenta - cost) / precioVenta) * 100, 5) : 0;
-        updatedPrices[`porcentajeRentabilidad${key}`] = formatDecimal(pctRentCalculated);
-      }
-      updatedPrices[`rentabilidad${key}`] = formatDecimal(valorRent);
-      updatedPrices[`rentabilidadIncIva${key}`] = formatDecimal(valorRentIncIva);
-    }
-
-    // Depuración de decimales: roundToFive SOLO en celdas calculadas (dependientes). NUNCA en el campo fuente.
-    // Manual Input Preservation: omitir si tiene foco O si es el campo que disparó el recalc (preserveSourceField).
-    const activeId = typeof document !== "undefined" ? document.activeElement?.id ?? "" : "";
-    for (const key of TARIFAS_KEYS) {
-      const pvpVal = parseFloat(updatedPrices[`pvp${key}`] ?? "0") || 0;
-      if (pvpVal <= 0) continue;
-
-      const preserve = preserveSourceField?.key === key ? preserveSourceField.field : null;
-      const pvpInputId = `pvp-${variantIndex}-${key}`;
-      const precioVentaInputId = `precioVenta-${variantIndex}-${key}`;
-
-      const skipPvpUpdate = preserve === "pvp" || activeId === pvpInputId;
-      const skipPrecioVentaUpdate = preserve === "precioVenta" || activeId === precioVentaInputId;
-
-      const roundedPvp = roundToFive(pvpVal, 5);
-      const pvpSource = skipPvpUpdate ? pvpVal : roundedPvp;
-      if (!skipPvpUpdate) {
-        updatedPrices[`pvp${key}`] = formatDecimal(roundedPvp);
-      }
-
-      const precioVentaFromPvp = ivaPct === 0 ? pvpSource : pvpSource / (1 + ivaPct / 100);
-      const roundedPrecioVenta = roundToFive(precioVentaFromPvp, 5);
-      const precioVentaForRent = skipPrecioVentaUpdate
-        ? parseFloat(updatedPrices[`precioVenta${key}`] ?? "0") || 0
-        : roundedPrecioVenta;
-      if (!skipPrecioVentaUpdate) {
-        updatedPrices[`precioVenta${key}`] = formatDecimal(roundedPrecioVenta);
-      }
-
-      const roundedValorRent = roundToFive(precioVentaForRent - cost, 5);
-      const roundedValorRentIncIva = roundToFive(pvpSource - costIncIva, 5);
-      updatedPrices[`rentabilidad${key}`] = formatDecimal(roundedValorRent);
-      updatedPrices[`rentabilidadIncIva${key}`] = formatDecimal(roundedValorRentIncIva);
-    }
-
-    setVariants((prev) => {
-      const next = [...prev];
-      const curr = next[variantIndex];
-      if (!curr?.prices) return prev;
-      next[variantIndex] = { ...curr, prices: updatedPrices as PricesRow };
-      return next;
-    });
-    return true;
-  }
-
-  /** Asigna los porcentajes del perfil activo (o por defecto) a todas las variantes y recalcula precios. */
   function applyProfilePercentages(): void {
     if (!profitabilityConfig) return;
     const profile = categoryId
@@ -2276,22 +1737,15 @@ export function ArticleFormDialog({
             </TabsContent>
 
             <TabsContent value="variants" className="flex-1 overflow-y-auto min-h-0 mt-0 p-4 sm:p-6 md:p-8 space-y-4 data-[state=inactive]:hidden">
-              {/* Resumen del artículo (solo lectura) */}
-              <div className="mb-6 p-4 rounded-lg border border-slate-200 bg-slate-50/80 flex flex-wrap gap-6 items-center font-acont">
-                <div>
-                  <p className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Código Maestro</p>
-                  <p className="text-sm font-mono font-bold text-acont-primary">{code || "—"}</p>
-                </div>
-                <div className="flex-1 min-w-[200px]">
-                  <p className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Artículo Base</p>
-                  <p className="text-sm font-semibold text-slate-800 uppercase">{name || "—"}</p>
-                </div>
-                <div>
-                  <p className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Categoría</p>
-                  <p className="text-sm font-medium text-slate-700">
-                    {localCategories.find((c) => c.id === categoryId)?.name ?? "Sin Categoría"}
-                  </p>
-                </div>
+              {/* Sincronización con General tab: banner único [Código] — [Nombre] ([Categoría]) */}
+              <div className="mb-4">
+                <VariantsTabBanner
+                  code={code}
+                  name={name}
+                  categoryName={
+                    localCategories.find((c) => c.id === categoryId)?.name ?? "Sin Categoría"
+                  }
+                />
               </div>
               <div className="flex justify-between items-center mb-2 flex-wrap gap-2">
                 <div className="flex items-center gap-4">

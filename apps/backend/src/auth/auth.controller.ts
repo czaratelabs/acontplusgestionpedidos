@@ -49,4 +49,18 @@ export class AuthController {
   register(@Body() registerDto: RegisterDto) {
     return this.authService.register(registerDto);
   }
+
+  @Public()
+  @Throttle({ default: { ttl: 60000, limit: 20 } })
+  @ApiOperation({ summary: 'Renovar JWT' })
+  @HttpCode(HttpStatus.OK)
+  @Post('refresh')
+  async refresh(@Headers('authorization') auth: string, @Body() body: { token?: string }) {
+    const fromHeader = auth?.startsWith('Bearer ') ? auth.slice(7) : auth;
+    const token = (body?.token ?? fromHeader ?? '').trim();
+    if (!token) {
+      throw new BadRequestException('Se requiere token actual (Authorization Bearer o body.token)');
+    }
+    return this.authService.refreshToken(token);
+  }
 }

@@ -17,14 +17,17 @@ import { UpdateContactDto } from './dto/update-contact.dto';
 import { SearchContactDto } from './dto/search-contact.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ContactsModuleGuard } from '../common/guards/contacts-module.guard';
+import { RoleGuard } from '../common/guards/role.guard';
+import { RequirePermission } from '../common/decorators/require-permission.decorator';
 
 @ApiTags('contacts')
 @Controller('contacts')
-@UseGuards(JwtAuthGuard, ContactsModuleGuard)
+@UseGuards(JwtAuthGuard, ContactsModuleGuard, RoleGuard)
 export class ContactsController {
   constructor(private readonly contactsService: ContactsService) {}
 
   @Post('company/:companyId')
+  @RequirePermission('contacts', 'edit')
   create(
     @Param('companyId') companyId: string,
     @Body() dto: CreateContactDto,
@@ -61,16 +64,19 @@ export class ContactsController {
   }
 
   @Patch(':id/activate')
+  @RequirePermission('contacts', 'edit')
   activate(@Param('id') id: string) {
     return this.contactsService.activate(id);
   }
 
   @Patch(':id')
+  @RequirePermission('contacts', 'edit')
   update(@Param('id') id: string, @Body() dto: UpdateContactDto) {
     return this.contactsService.update(id, dto);
   }
 
   @Delete(':id')
+  @RequirePermission('contacts', 'delete')
   remove(@Param('id') id: string) {
     return this.contactsService.remove(id);
   }
