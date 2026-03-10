@@ -36,6 +36,7 @@ import {
   emptyPrices,
 } from "@/lib/types/article.types";
 import type { UsePriceCalculationReturn } from "@/lib/hooks/usePriceCalculation";
+import { safeParseVariantAtIndex } from "@/lib/validations/article.schema";
 
 export type VariantsTabTax = { id: string; percentage: number };
 
@@ -104,7 +105,6 @@ export type VariantsTabProps = {
     description: string,
   ) => void;
   isVariantDirty: (index: number) => boolean;
-  getVariantValidation: (index: number) => { valid: boolean; message: string };
   saveSingleVariant: (index: number) => void;
   cancelEditVariant: () => void;
   startEditVariant: (index: number) => void;
@@ -166,7 +166,6 @@ export function VariantsTab(props: VariantsTabProps) {
     removeAdditionalBarcode,
     updateAdditionalBarcodeDescription,
     isVariantDirty,
-    getVariantValidation,
     saveSingleVariant,
     cancelEditVariant,
     startEditVariant,
@@ -295,14 +294,14 @@ export function VariantsTab(props: VariantsTabProps) {
                             disabled={
                               !effectiveArticleId ||
                               (v.id ? !isVariantDirty(i) : !canSave) ||
-                              !getVariantValidation(i).valid
+                              !safeParseVariantAtIndex(variants, i).success
                             }
                             onClick={() => saveSingleVariant(i)}
                             title={
                               !effectiveArticleId
                                 ? "Guarde primero el artículo en la pestaña General"
-                                : !getVariantValidation(i).valid
-                                  ? getVariantValidation(i).message
+                                : !safeParseVariantAtIndex(variants, i).success
+                                  ? (safeParseVariantAtIndex(variants, i) as { success: false; error: string }).error
                                   : undefined
                             }
                             className="h-9 px-4 rounded-md font-semibold bg-acont-primary text-white hover:bg-acont-primary/90 border-0 shadow-sm"
@@ -1056,14 +1055,14 @@ export function VariantsTab(props: VariantsTabProps) {
                               disabled={
                                 !effectiveArticleId ||
                                 (v.id ? !isVariantDirty(i) : !canSave) ||
-                                !getVariantValidation(i).valid
+                                !safeParseVariantAtIndex(variants, i).success
                               }
                               onClick={() => saveSingleVariant(i)}
                               title={
                                 !effectiveArticleId
                                   ? "Guarde primero el artículo en la pestaña General"
-                                  : !getVariantValidation(i).valid
-                                    ? getVariantValidation(i).message
+                                  : !safeParseVariantAtIndex(variants, i).success
+                                    ? (safeParseVariantAtIndex(variants, i) as { success: false; error: string }).error
                                     : undefined
                               }
                               className="h-9 px-5 py-2.5 rounded-md font-semibold bg-acont-primary text-white hover:bg-acont-primary/90 border-0 shadow-sm"

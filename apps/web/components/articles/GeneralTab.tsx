@@ -1,5 +1,10 @@
 "use client";
 
+/**
+ * GeneralTab (props): compatible con el diálogo actual sin FormProvider.
+ * La versión RHF vive en GeneralTabRhf.tsx y se activará al envolver el form con FormProvider.
+ */
+
 import { Info } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -133,10 +138,7 @@ export function GeneralTab({
               />
             </div>
             <div className="flex flex-col">
-              <Label
-                htmlFor="name"
-                className="text-[0.85rem] font-semibold mb-1.5 text-slate-600"
-              >
+              <Label htmlFor="name" className="text-[0.85rem] font-semibold mb-1.5 text-slate-600">
                 Nombre Base <span className="text-red-500">*</span>
               </Label>
               <Input
@@ -186,10 +188,7 @@ export function GeneralTab({
               </Select>
             </div>
             <div className="flex flex-col md:col-span-2">
-              <Label
-                htmlFor="observations"
-                className="text-[0.85rem] font-semibold mb-1.5 text-slate-600"
-              >
+              <Label htmlFor="observations" className="text-[0.85rem] font-semibold mb-1.5 text-slate-600">
                 Observaciones
               </Label>
               <Textarea

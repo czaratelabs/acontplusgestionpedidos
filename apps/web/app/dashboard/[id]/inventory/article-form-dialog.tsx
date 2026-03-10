@@ -62,6 +62,7 @@ import type {
   ArticleFormTax as Tax,
 } from "@/lib/types/article.types";
 import { usePriceCalculation } from "@/lib/hooks/usePriceCalculation";
+import { safeParseVariantAtIndex } from "@/lib/validations/article.schema";
 
 const TARIFF_NAMES_KEY = "TARIFF_NAMES";
 const TARIFF_PROFITABILITY_KEY = "TARIFF_PROFITABILITY";
@@ -371,36 +372,6 @@ export function ArticleFormDialog({
     return JSON.stringify(current) !== JSON.stringify(originalVariantSnapshot);
   }
 
-  /** Mandatory variant fields: sku, barcode, cost (SIN IVA > 0), cost INC IVA, measure_id. Fraction: if enabled, name and conversion_factor required. */
-  function getVariantValidation(index: number): { valid: boolean; message: string } {
-    const v = variants[index];
-    if (!v) return { valid: false, message: "Variante no encontrada." };
-    const missing: string[] = [];
-    if (!v.sku?.trim()) missing.push("SKU");
-    if (!v.barcode?.trim()) missing.push("Código de barras");
-    const costNum = parseFloat(String(v.cost)) || 0;
-    if (costNum <= 0) missing.push("Precio de Costo SIN IVA (mayor a cero)");
-    const costIncIvaVal = v.costIncIva != null ? String(v.costIncIva).trim() : "";
-    const costIncIvaNum = parseFloat(costIncIvaVal) || 0;
-    const costIncIvaOk = (costIncIvaVal !== "" && costIncIvaNum > 0) || (costNum > 0 && Boolean(taxId?.trim()));
-    if (!costIncIvaOk) missing.push("Precio de Costo INC IVA (mayor a cero)");
-    if (!v.measureId?.trim()) missing.push("Medida");
-    if (v.fractionEnabled) {
-      if ((v.fractions ?? []).length === 0) {
-        missing.push("Añada al menos una fracción (nombre y factor de conversión).");
-      } else {
-        (v.fractions ?? []).forEach((f, idx) => {
-          if (!(f.fraction_name ?? "").trim()) missing.push(`Fracción ${idx + 1}: nombre de sub-unidad`);
-          const factor = parseFloat(String(f.conversion_factor ?? "").replace(",", ".")) || 0;
-          if (factor <= 0 || factor > 1) missing.push(`Fracción ${idx + 1}: factor de conversión (0 < factor ≤ 1)`);
-        });
-      }
-    }
-    const valid = missing.length === 0;
-    const message = valid ? "" : "Complete los campos obligatorios: " + missing.join(", ") + ".";
-    return { valid, message };
-  }
-
   function startEditVariant(index: number) {
     const v = variants[index];
     if (!v) return;
@@ -627,9 +598,9 @@ export function ArticleFormDialog({
     if (!effectiveArticleId) return;
     const v = variants[index];
     if (!v) return;
-    const { valid, message } = getVariantValidation(index);
-    if (!valid) {
-      toast({ title: "Datos incompletos", description: message, variant: "destructive" });
+    const parsed = safeParseVariantAtIndex(variants, index);
+    if (!parsed.success) {
+      toast({ title: "Datos incompletos", description: parsed.error, variant: "destructive" });
       return;
     }
     const payload = buildSingleVariantPayload(index);
@@ -1684,7 +1655,6 @@ export function ArticleFormDialog({
               removeAdditionalBarcode={removeAdditionalBarcode}
               updateAdditionalBarcodeDescription={updateAdditionalBarcodeDescription}
               isVariantDirty={isVariantDirty}
-              getVariantValidation={getVariantValidation}
               saveSingleVariant={saveSingleVariant}
               cancelEditVariant={cancelEditVariant}
               startEditVariant={startEditVariant}
