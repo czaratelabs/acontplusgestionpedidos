@@ -497,3 +497,5 @@ export function usePriceCalculation(deps: UsePriceCalculationDeps) {
     applyFractionPctRentBlurOrEnter,
   };
 }
+
+export type UsePriceCalculationReturn = ReturnType<typeof usePriceCalculation>;

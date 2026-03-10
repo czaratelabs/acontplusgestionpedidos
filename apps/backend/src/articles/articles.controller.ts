@@ -103,6 +103,7 @@ export class ArticlesController {
    * Creación o actualización sin variantes. Payload excluye variantes y campos de variante.
    */
   @Post('company/:companyId/general')
+  @RequirePermission('inventory', 'edit') // <-- ¡Añadir esta línea!
   createGeneral(
     @Param('companyId') companyId: string,
     @Body() dto: SaveArticleGeneralDto,
@@ -136,6 +137,7 @@ export class ArticlesController {
 
   /** Create a single variant (resource-based, per-item save). */
   @Post(':articleId/variants')
+  @RequirePermission('inventory', 'edit') // <-- ¡Añadir esta línea!
   createVariant(
     @Param('articleId') articleId: string,
     @Query('companyId') companyId: string,
