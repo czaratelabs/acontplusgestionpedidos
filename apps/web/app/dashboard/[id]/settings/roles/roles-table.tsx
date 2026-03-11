@@ -156,7 +156,7 @@ export function RolesTableClient({
             {roles.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={4} className="h-24 text-center text-slate-500">
-                  No hay roles configurados. Crea uno con el botón "Nuevo Rol".
+                  No hay roles configurados. Crea uno con el botón &quot;Nuevo Rol&quot;.
                 </TableCell>
               </TableRow>
             ) : (

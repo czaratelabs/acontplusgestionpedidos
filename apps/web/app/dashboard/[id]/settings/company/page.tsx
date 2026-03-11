@@ -150,7 +150,7 @@ export default function CompanySettingsPage({
         description: "Los datos de la empresa se han actualizado correctamente.",
         variant: "default",
       });
-    } catch (err) {
+    } catch {
       toast({
         title: "Error",
         description: "No se pudieron guardar los cambios. Inténtalo de nuevo.",

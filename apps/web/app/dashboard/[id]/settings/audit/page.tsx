@@ -38,6 +38,43 @@ type AuditLogItem = {
   created_at: string;
 };
 
+const ENTITY_LABELS: Record<string, string> = {
+  Company: "Empresa",
+  User: "Usuario",
+  UserCompany: "Asignación de Usuario",
+  Role: "Rol",
+  Establishment: "Establecimiento",
+  Warehouse: "Almacén",
+  EmissionPoint: "Punto de Emisión",
+  Tax: "Impuesto",
+  SystemSetting: "Configuración",
+  BusinessRule: "Regla de Negocio",
+  Article: "Artículo",
+  ArticleVariant: "Variante de Artículo",
+};
+
+function resolveEntityLabel(
+  entityName: string,
+  values: Record<string, unknown> | null,
+): string {
+  if (ENTITY_LABELS[entityName]) {
+    return ENTITY_LABELS[entityName];
+  }
+  if (entityName !== "Contact") return entityName;
+
+  const isClient = values?.isClient === true;
+  const isSupplier = values?.isSupplier === true;
+  const isEmployee = values?.isEmployee === true;
+
+  const types: string[] = [];
+  if (isClient) types.push("Cliente");
+  if (isSupplier) types.push("Proveedor");
+  if (isEmployee) types.push("Empleado");
+
+  if (types.length === 0) return "Contactos";
+  return `Contactos › ${types.join(", ")}`;
+}
+
 function ActionBadge({ action }: { action: string }) {
   if (action === "CREATE")
     return <Badge variant="default">CREATE</Badge>;
@@ -59,6 +96,39 @@ function AuditDetailsDialog({
   onOpenChange: (open: boolean) => void;
   companyId: string;
 }) {
+  const [entityLabel, setEntityLabel] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open || !log) {
+      setEntityLabel(null);
+      return;
+    }
+    const currentLog = log;
+    async function loadEntityLabel() {
+      try {
+        if (
+          currentLog.entity_name === "Contact" &&
+          currentLog.entity_id
+        ) {
+          const contact = await apiGet<{
+            name: string;
+            tradeName?: string | null;
+          }>(`/contacts/${currentLog.entity_id}`);
+          setEntityLabel(
+            contact.tradeName
+              ? `${contact.name} (${contact.tradeName})`
+              : contact.name,
+          );
+        } else {
+          setEntityLabel(null);
+        }
+      } catch {
+        setEntityLabel(null);
+      }
+    }
+    loadEntityLabel();
+  }, [log, open]);
+
   if (!log) return null;
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -70,9 +140,28 @@ function AuditDetailsDialog({
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 flex-1 min-h-0">
-          <div className="text-sm text-slate-500">
-            {log.entity_name} · <ActionBadge action={log.action} /> ·{" "}
-            <DateFormatter dateString={log.created_at} companyId={companyId} />
+          <div className="text-sm text-slate-500 flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="font-medium text-slate-700">
+              {resolveEntityLabel(
+                log.entity_name,
+                log.new_values ?? log.old_values,
+              )}
+            </span>
+            {entityLabel && (
+              <>
+                <span className="text-slate-300">·</span>
+                <span className="font-semibold text-slate-800">
+                  {entityLabel}
+                </span>
+              </>
+            )}
+            <span className="text-slate-300">·</span>
+            <ActionBadge action={log.action} />
+            <span className="text-slate-300">·</span>
+            <DateFormatter
+              dateString={log.created_at}
+              companyId={companyId}
+            />
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 flex-1 min-h-0">
             <div className="flex flex-col min-h-0">
@@ -219,7 +308,12 @@ export default function AuditPage({
                         <TableCell className="text-sm">
                           {displayUser(log)}
                         </TableCell>
-                        <TableCell>{log.entity_name}</TableCell>
+                        <TableCell>
+                          {resolveEntityLabel(
+                            log.entity_name,
+                            log.new_values ?? log.old_values,
+                          )}
+                        </TableCell>
                         <TableCell>
                           <ActionBadge action={log.action} />
                         </TableCell>

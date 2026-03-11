@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { emptyPrices, emptyVariant } from "@/lib/types/article.types";
 
 /**
  * Schema completo del artículo + variantes para RHF + zodResolver.
@@ -120,7 +119,6 @@ export type ArticleFormValues = z.input<typeof articleSchema>;
 
 /** Valores por defecto alineados con emptyVariant + general vacío. */
 export function getDefaultArticleFormValues(): ArticleFormValues {
-  const v = emptyVariant();
   return {
     code: "",
     name: "",

@@ -71,7 +71,7 @@ export default function SubscriptionsPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const { id } = use(params);
+  use(params);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingPlan, setEditingPlan] = useState<Plan | null>(null);

@@ -5,7 +5,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 export async function POST(request: NextRequest) {
   try {
     // Parsear el body de forma segura
-    let body: any;
+    let body: unknown;
     try {
       body = await request.json();
     } catch (parseError) {
@@ -41,22 +41,23 @@ export async function POST(request: NextRequest) {
         clearTimeout(timeoutId);
         throw fetchErr;
       }
-    } catch (fetchError: any) {
+    } catch (fetchError: unknown) {
       // Error de conexión (backend no disponible, CORS, timeout, etc.)
       console.error("[api/auth/register] Fetch error:", fetchError);
-      const errorMsg = fetchError?.message || String(fetchError);
-      const errorName = fetchError?.name || "";
-      
+      const errorMsg = fetchError instanceof Error ? fetchError.message : String(fetchError);
+      const errorName = fetchError instanceof Error ? fetchError.name : "";
+      const causeCode = fetchError instanceof Error && fetchError.cause && typeof fetchError.cause === "object" && "code" in fetchError.cause ? (fetchError.cause as { code?: string }).code : undefined;
+
       // Detectar diferentes tipos de errores
       if (
-        errorMsg.includes("fetch") || 
-        errorMsg.includes("ECONNREFUSED") || 
+        errorMsg.includes("fetch") ||
+        errorMsg.includes("ECONNREFUSED") ||
         errorMsg.includes("Failed to fetch") ||
         errorMsg.includes("NetworkError") ||
         errorMsg.includes("Network request failed") ||
         errorName === "AbortError" ||
         errorName === "TimeoutError" ||
-        fetchError?.cause?.code === "ECONNREFUSED" ||
+        causeCode === "ECONNREFUSED" ||
         fetchError instanceof TypeError
       ) {
         return NextResponse.json(
@@ -78,23 +79,23 @@ export async function POST(request: NextRequest) {
     }
     
     // Procesar la respuesta del backend
-    let data: any = {};
+    let data: Record<string, unknown> = {};
     try {
       const text = await res.text();
       if (text) {
-        data = JSON.parse(text);
+        data = JSON.parse(text) as Record<string, unknown>;
       }
     } catch (parseError) {
       console.error("[api/auth/register] JSON parse error:", parseError);
       // Si no se puede parsear, usar el texto como mensaje
       data = { message: res.statusText || `Error ${res.status}` };
     }
-    
+
     if (!res.ok) {
       return NextResponse.json(
-        { 
-          message: data?.message || data?.error || `Error ${res.status}`,
-          ...data 
+        {
+          message: (data?.message as string) || (data?.error as string) || `Error ${res.status}`,
+          ...data
         }, 
         { status: res.status }
       );

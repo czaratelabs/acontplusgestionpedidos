@@ -131,7 +131,10 @@ export default function AdminSubscriptionsPage() {
         setCompanies(Array.isArray(companiesData) ? companiesData : []);
       }
     }).catch(() => {
-      if (!cancelled) setPlans([]), setCompanies([]);
+      if (!cancelled) {
+        setPlans([]);
+        setCompanies([]);
+      }
     }).finally(() => {
       if (!cancelled) setLoading(false);
     });
@@ -543,7 +546,10 @@ export default function AdminSubscriptionsPage() {
       <Dialog
         open={assignOpen || !!renewCompany}
         onOpenChange={(open) => {
-          if (!open) setAssignOpen(false), setRenewCompany(null);
+          if (!open) {
+            setAssignOpen(false);
+            setRenewCompany(null);
+          }
         }}
       >
         <DialogContent className="sm:max-w-[480px]">

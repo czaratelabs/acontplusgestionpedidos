@@ -316,7 +316,7 @@ function CatalogTable({
   );
 }
 
-export function CatalogsContent({ companyId, data, onRefresh, loading }: CatalogsContentProps) {
+export function CatalogsContent({ companyId, data, onRefresh }: CatalogsContentProps) {
   return (
     <Tabs defaultValue="brands" className="space-y-4">
       <TabsList className="grid w-full grid-cols-3 lg:grid-cols-6">

@@ -83,19 +83,20 @@ async function proxyRequest(
         headers,
         body: body || undefined,
       });
-    } catch (fetchError: any) {
+    } catch (fetchError: unknown) {
       // Error de conexión (backend no disponible, CORS, etc.)
       console.error(`[api/proxy] Fetch error for ${method} ${path}:`, fetchError);
-      const errorMsg = fetchError?.message || String(fetchError);
-      
+      const errorMsg = fetchError instanceof Error ? fetchError.message : String(fetchError);
+      const causeCode = fetchError instanceof Error && fetchError.cause && typeof fetchError.cause === "object" && "code" in fetchError.cause ? (fetchError.cause as { code?: string }).code : undefined;
+
       if (
-        errorMsg.includes("fetch") || 
-        errorMsg.includes("ECONNREFUSED") || 
+        errorMsg.includes("fetch") ||
+        errorMsg.includes("ECONNREFUSED") ||
         errorMsg.includes("Failed to fetch") ||
         errorMsg.includes("network") ||
         errorMsg.includes("NetworkError") ||
         fetchError instanceof TypeError ||
-        fetchError?.cause?.code === "ECONNREFUSED"
+        causeCode === "ECONNREFUSED"
       ) {
         return NextResponse.json(
           {
@@ -123,12 +124,12 @@ async function proxyRequest(
     }
 
     // Leer respuesta
-    let data: any;
+    let data: Record<string, unknown>;
     try {
       const text = await res.text();
       if (text) {
         try {
-          data = JSON.parse(text);
+          data = JSON.parse(text) as Record<string, unknown>;
         } catch {
           data = { message: text };
         }

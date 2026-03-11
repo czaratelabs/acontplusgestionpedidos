@@ -31,7 +31,7 @@ export default async function Home() {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {companies.map((company: any) => (
+              {companies.map((company) => (
                 <CardEmpresa key={company.id} data={company} />
               ))}
             </div>
@@ -42,8 +42,10 @@ export default async function Home() {
   );
 }
 
+type CompanyCard = { id: string; name: string; ruc_nit: string };
+
 // Micro-componente visual
-function CardEmpresa({ data }: { data: any }) {
+function CardEmpresa({ data }: { data: CompanyCard }) {
   return (
     <div className="group bg-white border border-slate-200 p-6 rounded-2xl hover:border-indigo-500/50 hover:shadow-indigo-500/10 hover:shadow-2xl transition-all duration-300 cursor-pointer relative overflow-hidden">
       <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-indigo-100/50 to-transparent rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-150" />

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, Star, Upload, Pencil, X, Check, Lock, Boxes } from "lucide-react";
+import { Plus, Trash2, Star, Upload, Pencil, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,7 +15,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { CatalogSelectWithCreate } from "@/components/catalog-select-with-create";
 import { GeneralTab } from "@/components/articles/GeneralTab";
 import { VariantsTab } from "@/components/articles/VariantsTab";
 import type { CatalogItem } from "@/lib/api-client";
@@ -256,17 +255,7 @@ export function ArticleFormDialog({
     taxes,
     toast,
   });
-  const {
-    handleSalePriceCalculation,
-    handlePvpCalculation,
-    handleCostToPriceCalculation,
-    applyPctRentBlurOrEnter,
-    applyPvpCellBlurOrEnter,
-    refreshRentabilidadOnCostBlur,
-    handleFractionSalePriceCalculation,
-    handleFractionPvpCalculation,
-    applyFractionPctRentBlurOrEnter,
-  } = pricing;
+  // TODO: usar en módulo de precios — handleSalePriceCalculation, handlePvpCalculation, handleCostToPriceCalculation, applyPctRentBlurOrEnter, applyPvpCellBlurOrEnter, refreshRentabilidadOnCostBlur, handleFractionSalePriceCalculation, handleFractionPvpCalculation, applyFractionPctRentBlurOrEnter
   const effectiveArticleId = initialData?.id ?? savedArticleId ?? null;
   const isEditing = Boolean(initialData) || Boolean(savedArticleId);
   /** General tab fields are read-only when existing article and not in edit mode. */
@@ -339,10 +328,6 @@ export function ArticleFormDialog({
 
   /** Variants tab: a variant form is open (adding new or editing existing). Blocks tab switch until Save or Cancel. */
   const isVariantFormOpen = editingVariantIndex !== null;
-
-  /** Variants tab has unsaved changes (variant being edited has modifications). */
-  const isVariantsDirty =
-    editingVariantIndex !== null && isVariantDirty(editingVariantIndex);
 
   /** Form is "locked" when General has unsaved changes or a variant form is open (add/edit). Used for tab/dialog/beforeunload guards. */
   const isFormLocked = isGeneralDirty || isVariantFormOpen;

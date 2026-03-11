@@ -132,7 +132,6 @@ export function VariantsTab(props: VariantsTabProps) {
     addVariant,
     removeVariant,
     editingVariantIndex,
-    setEditingVariantIndex,
     expandedVariantIndex,
     setExpandedVariantIndex,
     localMeasures,

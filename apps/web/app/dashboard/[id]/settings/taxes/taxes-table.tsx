@@ -142,7 +142,7 @@ export function TaxesTable({
             {taxes.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={5} className="h-24 text-center text-slate-500">
-                  No hay impuestos configurados. Agrega uno con el botón "Nuevo Impuesto".
+                  No hay impuestos configurados. Agrega uno con el botón &quot;Nuevo Impuesto&quot;.
                 </TableCell>
               </TableRow>
             ) : (

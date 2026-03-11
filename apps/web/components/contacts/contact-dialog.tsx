@@ -25,7 +25,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
-import { apiPost, apiPatch, apiFetch, API_BASE } from "@/lib/api-client";
+import { apiPost, apiPatch, apiFetch } from "@/lib/api-client";
 
 export const CONSUMIDOR_FINAL_TAX_ID = "9999999999999";
 
@@ -643,10 +643,11 @@ export function ContactDialog({
                   handleTaxIdInput(e);
                   taxIdRegisterRest.onChange?.(e);
                 }}
-                {...(() => {
-                  const { onBlur: _b, onChange: _oc, ...rest } = taxIdRegisterRest;
-                  return rest;
-                })()}
+                {...Object.fromEntries(
+                  Object.entries(taxIdRegisterRest).filter(
+                    ([key]) => key !== "onBlur" && key !== "onChange"
+                  )
+                ) as Omit<typeof taxIdRegisterRest, "onBlur" | "onChange">}
               />
               {lookupLoading && (
                 <span
