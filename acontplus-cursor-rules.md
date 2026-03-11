@@ -1336,5 +1336,20 @@ immediately. The API must maintain backward compatibility.
   Las propiedades de una sola palabra en minúsculas (name, 
   email, phone) no necesitan name explícito.
   
+  - TypeORM relations[]: nunca usar findOne con relations[] 
+  para cargar relaciones en producción con Supabase/PostgreSQL. 
+  Usar siempre createQueryBuilder con leftJoinAndSelect explícito 
+  para garantizar carga consistente entre entornos.
+
+- Guards en controllers: nunca aplicar SuperAdminGuard a nivel 
+  de clase si el controller tiene endpoints que usuarios normales 
+  necesitan. Aplicar SuperAdminGuard solo a nivel de método en 
+  las operaciones de gestión global.
+
+- apiGet siempre tipado: nunca usar apiGet() sin genérico. 
+  Siempre apiGet<TipoEsperado[]>() o apiGet<TipoEsperado>().
+  Sin tipo genérico, TypeScript infiere unknown y el build 
+  falla en producción aunque funcione en desarrollo.
+  
   
 *These rules are derived from the actual codebase architecture audit of `acontplusgestionpedidos`. Apply them without exception on every code generation.*
