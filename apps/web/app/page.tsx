@@ -23,11 +23,19 @@ export default async function Home() {
 
       <main>
         <Suspense fallback={<div className="text-indigo-600">Cargando flujo de datos...</div>}>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {companies.map((company: any) => (
-              <CardEmpresa key={company.id} data={company} />
-            ))}
-          </div>
+          {companies.length === 0 ? (
+            <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500">
+              <p className="text-lg">
+                Inicia sesión como SuperAdmin para ver y gestionar las organizaciones, o el backend no está disponible.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {companies.map((company: any) => (
+                <CardEmpresa key={company.id} data={company} />
+              ))}
+            </div>
+          )}
         </Suspense>
       </main>
     </div>

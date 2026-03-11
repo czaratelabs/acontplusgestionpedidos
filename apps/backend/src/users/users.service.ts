@@ -24,17 +24,23 @@ export class UsersService {
   ) {}
 
   async findOneById(id: string): Promise<User | null> {
-    return this.userRepository.findOne({
-      where: { id },
-      relations: ['userCompanies', 'userCompanies.company', 'userCompanies.role'],
-    });
+    return this.userRepository
+      .createQueryBuilder('user')
+      .leftJoinAndSelect('user.userCompanies', 'uc')
+      .leftJoinAndSelect('uc.company', 'company')
+      .leftJoinAndSelect('uc.role', 'role')
+      .where('user.id = :id', { id })
+      .getOne();
   }
 
   async findOneByEmail(email: string): Promise<User | null> {
-    return this.userRepository.findOne({
-      where: { email },
-      relations: ['userCompanies', 'userCompanies.company', 'userCompanies.role'],
-    });
+    return this.userRepository
+      .createQueryBuilder('user')
+      .leftJoinAndSelect('user.userCompanies', 'uc')
+      .leftJoinAndSelect('uc.company', 'company')
+      .leftJoinAndSelect('uc.role', 'role')
+      .where('user.email = :email', { email })
+      .getOne();
   }
 
   async findAllByCompany(

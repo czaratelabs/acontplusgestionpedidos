@@ -13,16 +13,46 @@ async function getAuthHeaders(): Promise<HeadersInit> {
   return cookie ? { Cookie: cookie } : {};
 }
 
-export async function getCompanies() {
-  const authHeaders = await getAuthHeaders();
-  const res = await fetch(`${API_BASE}/companies`, {
-    cache: "no-store",
-    headers: authHeaders,
-  });
-
-  if (!res.ok) throw new Error("Error en el cerebro del sistema");
-
-  return res.json();
+/** Obtiene empresas para la home. Retorna [] si no hay sesión, no es SuperAdmin o el backend no responde. */
+export async function getCompanies(): Promise<
+  Array<{
+    id: string;
+    name: string;
+    ruc_nit: string;
+    planId?: string | null;
+    plan?: { id: string; name: string } | null;
+    subscriptionStartDate?: string | null;
+    subscriptionEndDate?: string | null;
+  }>
+> {
+  try {
+    const authHeaders = await getAuthHeaders();
+    const res = await fetch(`${API_BASE}/companies`, {
+      cache: "no-store",
+      headers: authHeaders,
+    });
+    if (!res.ok) {
+      // 401 = no autenticado, 403 = no SuperAdmin, 5xx = backend error
+      if (process.env.NODE_ENV === "development") {
+        console.warn(
+          "[getCompanies] API no OK:",
+          res.status,
+          res.statusText,
+          await res.text().catch(() => "")
+        );
+      }
+      return [];
+    }
+    const text = await res.text();
+    if (!text?.trim()) return [];
+    const data = JSON.parse(text);
+    return Array.isArray(data) ? data : [];
+  } catch (err) {
+    if (process.env.NODE_ENV === "development") {
+      console.warn("[getCompanies] Error de red o backend no disponible:", err);
+    }
+    return [];
+  }
 }
 
 /** Obtiene todas las empresas (para admin). Retorna [] si hay error. */

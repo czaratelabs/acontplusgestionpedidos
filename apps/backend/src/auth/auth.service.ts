@@ -3,6 +3,7 @@ import {
   UnauthorizedException,
   ConflictException,
   NotFoundException,
+  Logger,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import type { JwtSignOptions } from '@nestjs/jwt';
@@ -21,6 +22,8 @@ export interface CompanyAssignment {
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private usersService: UsersService,
     private companiesService: CompaniesService,
@@ -100,6 +103,11 @@ export class AuthService {
       }));
 
     if (companies.length === 0) {
+      this.logger.warn(
+        `signIn: usuario ${user.id} (${email}) autenticado ` +
+          `pero sin empresas activas. userCompanies cargadas: ` +
+          `${user.userCompanies?.length ?? 0}`,
+      );
       throw new UnauthorizedException(
         'Usuario sin acceso a ninguna empresa. Contacte al administrador.',
       );
