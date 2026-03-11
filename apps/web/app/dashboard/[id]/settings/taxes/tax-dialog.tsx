@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
+import type { Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useRouter } from "next/navigation";
@@ -25,7 +26,11 @@ const formSchema = z.object({
   code: z.string().min(1, "El código SRI es requerido para facturación electrónica"),
 });
 
-type FormValues = z.infer<typeof formSchema>;
+type FormValues = {
+  name: string;
+  percentage: number;
+  code: string;
+};
 
 export type TaxForDialog = {
   id: string;
@@ -60,7 +65,7 @@ export function TaxDialog({
     reset,
     formState: { errors },
   } = useForm<FormValues>({
-    resolver: zodResolver(formSchema),
+    resolver: zodResolver(formSchema) as Resolver<FormValues>,
     defaultValues: {
       name: "",
       percentage: 0,

@@ -86,7 +86,7 @@ export default function SubscriptionsPage({
 
   useEffect(() => {
     let cancelled = false;
-    apiGet<Plan[] | unknown[]>("/subscription-plans")
+    apiGet<Plan[]>("/subscription-plans")
       .then((data) => {
         if (!cancelled && Array.isArray(data)) setPlans(data);
       })

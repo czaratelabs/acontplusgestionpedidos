@@ -207,7 +207,7 @@ export function ContactDialog({
   const setOpen = isControlled ? onOpenChange! : setInternalOpen;
 
   const isEditing = Boolean(initialData);
-  const taxIdInputRef = useRef<HTMLInputElement>(null);
+  const taxIdInputRef = useRef<HTMLInputElement | null>(null);
 
   const isEmployee = type === "employee";
   const documentTypeOptions =
@@ -259,8 +259,8 @@ export function ContactDialog({
       const personType =
         validCode === "C" || isEmployee ? "01" : (initialData.sriPersonType ?? "01");
       reset({
-        sriDocumentTypeCode: validCode,
-        sriPersonType: personType,
+        sriDocumentTypeCode: validCode as "C" | "R" | "P" | "F",
+        sriPersonType: personType as "01" | "02",
         name: initialData.name ?? "",
         tradeName: initialData.tradeName ?? "",
         taxId: taxIdForInput,
@@ -404,7 +404,7 @@ export function ContactDialog({
         const contact = (await res.json()) as ContactForDialog;
         setResolvedContact(contact);
         setValue("sriDocumentTypeCode", (contact.sriDocumentTypeCode ?? "R") as SriDocumentTypeCode);
-        setValue("sriPersonType", contact.sriPersonType ?? "01");
+        setValue("sriPersonType", (contact.sriPersonType ?? "01") as "01" | "02");
         setValue("name", contact.name ?? "");
         setValue("tradeName", contact.tradeName ?? "");
         const rawTaxId = contact.taxId ?? "";

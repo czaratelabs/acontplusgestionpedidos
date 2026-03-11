@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
 import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/api-client";
+import type { Resolver } from "react-hook-form";
 
 const sequenceSchema = z.object({
   invoice_sequence: z.coerce.number().int().min(1, "Mínimo 1"),
@@ -50,6 +51,16 @@ const defaultSequences = {
   dispatch_sequence: 1,
 };
 
+type EmissionPointFormValues = {
+  code: string;
+  name: string;
+  invoice_sequence: number;
+  proforma_sequence: number;
+  order_sequence: number;
+  delivery_note_sequence: number;
+  dispatch_sequence: number;
+};
+
 export default function EmissionPointsPage({
   params,
 }: {
@@ -71,7 +82,7 @@ export default function EmissionPointsPage({
 
   async function refetchPoints() {
     try {
-      const data = await apiGet<EmissionPoint[] | unknown[]>(
+      const data = await apiGet<EmissionPoint[]>(
         `/emission-points/establishment/${establishmentId}`
       );
       setPoints(Array.isArray(data) ? data : []);
@@ -80,8 +91,8 @@ export default function EmissionPointsPage({
     }
   }
 
-  const { register, handleSubmit, formState: { errors }, reset } = useForm<z.infer<typeof formSchema>>({
-    resolver: zodResolver(formSchema),
+  const { register, handleSubmit, formState: { errors }, reset } = useForm<EmissionPointFormValues>({
+    resolver: zodResolver(formSchema) as Resolver<EmissionPointFormValues>,
     defaultValues: { code: "001", name: "", ...defaultSequences },
   });
 
@@ -91,7 +102,7 @@ export default function EmissionPointsPage({
 
   // Cargar puntos
   useEffect(() => {
-    apiGet<EmissionPoint[] | unknown[]>(`/emission-points/establishment/${establishmentId}`)
+    apiGet<EmissionPoint[]>(`/emission-points/establishment/${establishmentId}`)
       .then((data) => setPoints(Array.isArray(data) ? data : []))
       .catch((err) => console.error(err));
   }, [establishmentId, open]);

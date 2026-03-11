@@ -156,7 +156,7 @@ async function fetchCatalog(
   companyId: string,
   path: string
 ): Promise<{ id: string; name: string }[]> {
-  const data = await apiGet<unknown[]>(
+  const data = await apiGet<{ id: string; name: string }[]>(
     `/articles/catalogs/company/${companyId}/${path}`
   );
   return Array.isArray(data) ? data : [];

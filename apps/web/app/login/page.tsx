@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { Suspense, useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -39,7 +39,7 @@ type CompanyOption = {
   role: string;
 };
 
-export default function LoginPage() {
+function LoginPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [error, setError] = useState("");
@@ -74,19 +74,31 @@ export default function LoginPage() {
     setError("");
 
     try {
-      const data = await apiPost<Record<string, unknown>>("/api/auth/login", values, {
+      const data = (await apiPost<Record<string, unknown>>("/api/auth/login", values, {
         skip401Redirect: true,
-      });
+      })) as {
+        step?: string;
+        companies?: { companyId: string; companyName?: string; role?: string }[];
+        sessionToken?: string;
+        user?: { name?: string; companyId?: string | null };
+        access_token?: string;
+      };
 
-      if (data.step === "select_company" && data.companies?.length > 1) {
-        setCompanies(data.companies);
-        setSessionToken(data.sessionToken);
+      if (data.step === "select_company" && (data.companies?.length ?? 0) > 1) {
+        setCompanies(
+          (data.companies ?? []).map((c) => ({
+            companyId: c.companyId,
+            companyName: c.companyName,
+            role: c.role ?? "",
+          }))
+        );
+        setSessionToken(data.sessionToken ?? "");
         setUserName(data.user?.name ?? "");
         setStep("select_company");
-        setSelectedCompanyId(data.companies[0]?.companyId ?? "");
+        setSelectedCompanyId(data.companies?.[0]?.companyId ?? "");
       } else {
-        Cookies.set("token", data.access_token, { expires: 1 });
-        localStorage.setItem("user", JSON.stringify(data.user));
+        Cookies.set("token", data.access_token ?? "", { expires: 1 });
+        localStorage.setItem("user", JSON.stringify(data.user ?? {}));
         const redirectTo = searchParams.get("redirect");
         const defaultTarget =
           data.user?.companyId == null || data.user?.companyId === ""
@@ -109,17 +121,17 @@ export default function LoginPage() {
     setError("");
 
     try {
-      const data = await apiPost<Record<string, unknown>>(
+      const data = (await apiPost<Record<string, unknown>>(
         "/api/auth/select-company",
         { companyId: selectedCompanyId },
         {
           skip401Redirect: true,
           headers: { Authorization: `Bearer ${sessionToken}` },
         }
-      );
+      )) as { access_token?: string; user?: { companyId?: string | null } };
 
-      Cookies.set("token", data.access_token, { expires: 1 });
-      localStorage.setItem("user", JSON.stringify(data.user));
+      Cookies.set("token", data.access_token ?? "", { expires: 1 });
+      localStorage.setItem("user", JSON.stringify(data.user ?? {}));
       const redirectTo = searchParams.get("redirect");
       const defaultTarget =
         data.user?.companyId == null || data.user?.companyId === ""
@@ -286,5 +298,19 @@ export default function LoginPage() {
         </CardFooter>
       </Card>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center">
+          Cargando...
+        </div>
+      }
+    >
+      <LoginPageContent />
+    </Suspense>
   );
 }

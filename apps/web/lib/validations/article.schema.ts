@@ -142,6 +142,6 @@ export function safeParseVariantAtIndex(
   const v = variants?.[index];
   const r = variantSubmitSchema.safeParse(v);
   if (r.success) return { success: true };
-  const msg = r.error.errors[0]?.message ?? "Variante incompleta";
+  const msg = r.error.issues[0]?.message ?? "Variante incompleta";
   return { success: false, error: msg };
 }

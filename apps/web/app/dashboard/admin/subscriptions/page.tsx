@@ -123,8 +123,8 @@ export default function AdminSubscriptionsPage() {
   useEffect(() => {
     let cancelled = false;
     Promise.all([
-      apiGet<Plan[] | unknown[]>("/subscription-plans").catch(() => []),
-      apiGet<Company[] | unknown[]>("/companies").catch(() => []),
+      apiGet<Plan[]>("/subscription-plans").catch(() => []),
+      apiGet<Company[]>("/companies").catch(() => []),
     ]).then(([plansData, companiesData]) => {
       if (!cancelled) {
         setPlans(Array.isArray(plansData) ? plansData : []);

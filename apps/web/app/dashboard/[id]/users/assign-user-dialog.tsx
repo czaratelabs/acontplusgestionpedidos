@@ -114,8 +114,8 @@ export function AssignUserDialog({
     if (open) {
       setLoadingData(true);
       Promise.all([
-        apiGet<AvailableUser[] | unknown[]>(`/users/available-for-company/${companyId}`).catch(() => []),
-        apiGet<Role[] | unknown[]>(`/roles?companyId=${companyId}`).catch(() => []),
+        apiGet<AvailableUser[]>(`/users/available-for-company/${companyId}`).catch(() => []),
+        apiGet<Role[]>(`/roles?companyId=${companyId}`).catch(() => []),
       ])
         .then(([users, rolesData]) => {
           setAvailableUsers(Array.isArray(users) ? users : []);
