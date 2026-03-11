@@ -21,18 +21,18 @@ export class Contact {
   @Column({ type: 'varchar' })
   name: string;
 
-  @Column({ type: 'varchar', nullable: true })
+  @Column({ name: 'trade_name', type: 'varchar', nullable: true })
   tradeName: string | null;
 
   /** SRI document type: C=Cédula, R=RUC, P=Pasaporte, F=Consumidor Final */
-  @Column({ type: 'varchar', length: 1, default: 'R' })
+  @Column({ name: 'sri_document_type_code', type: 'varchar', length: 1, default: 'R' })
   sriDocumentTypeCode: string;
 
   /** SRI tipo persona: 01=Persona natural, 02=Sociedad (nullable por datos existentes) */
-  @Column({ type: 'varchar', length: 2, default: '01', nullable: true })
+  @Column({ name: 'sri_person_type', type: 'varchar', length: 2, default: '01', nullable: true })
   sriPersonType: string | null;
 
-  @Column({ type: 'varchar' })
+  @Column({ name: 'tax_id', type: 'varchar' })
   taxId: string;
 
   @Column({ type: 'varchar', nullable: true })
@@ -44,16 +44,16 @@ export class Contact {
   @Column({ type: 'varchar', nullable: true })
   address: string | null;
 
-  @Column({ type: 'boolean', default: false })
+  @Column({ name: 'is_client', type: 'boolean', default: false })
   isClient: boolean;
 
-  @Column({ type: 'boolean', default: false })
+  @Column({ name: 'is_supplier', type: 'boolean', default: false })
   isSupplier: boolean;
 
-  @Column({ type: 'boolean', default: false })
+  @Column({ name: 'is_employee', type: 'boolean', default: false })
   isEmployee: boolean;
 
-  @Column({ type: 'varchar', nullable: true })
+  @Column({ name: 'job_title', type: 'varchar', nullable: true })
   jobTitle: string | null;
 
   @Column({ type: 'decimal', precision: 14, scale: 2, nullable: true })
