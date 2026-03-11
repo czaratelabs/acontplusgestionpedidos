@@ -24,7 +24,7 @@ import { Eye } from "lucide-react";
 import { DateFormatter } from "@/components/date-formatter";
 
 // Usar /api para que pase por el proxy de Next.js (evita CORS, reenvía cookies, consistente con contact-list)
-import { apiGet } from "@/lib/api-client";
+import { apiGet, getCategoriesClient } from "@/lib/api-client";
 
 type AuditLogItem = {
   id: string;
@@ -37,6 +37,46 @@ type AuditLogItem = {
   new_values: Record<string, unknown> | null;
   created_at: string;
 };
+
+/** Catálogos para resolver UUIDs a nombres en el modal de detalle (solo en vista, no en tabla). */
+export type AuditCatalogs = {
+  roles?: Array<{ id: string; name: string }>;
+  users?: Array<{ id: string; full_name: string }>;
+  companies?: Array<{ id: string; name: string }>;
+  warehouses?: Array<{ id: string; name: string }>;
+  categories?: Array<{ id: string; name: string }>;
+};
+
+/** Transforma old_values/new_values reemplazando UUIDs por nombres legibles. No hace fetch. */
+function resolveAuditValues(
+  values: Record<string, unknown> | null,
+  catalogs: AuditCatalogs,
+): Record<string, unknown> | null {
+  if (!values) return null;
+  const resolved: Record<string, unknown> = { ...values };
+
+  if (catalogs.roles && typeof resolved.roleId === "string") {
+    const role = catalogs.roles.find((r) => r.id === resolved.roleId);
+    if (role) resolved.roleId = role.name;
+  }
+  if (catalogs.users && typeof resolved.userId === "string") {
+    const user = catalogs.users.find((u) => u.id === resolved.userId);
+    if (user) resolved.userId = user.full_name;
+  }
+  if (catalogs.companies && typeof resolved.companyId === "string") {
+    const company = catalogs.companies.find((c) => c.id === resolved.companyId);
+    if (company) resolved.companyId = company.name;
+  }
+  if (catalogs.warehouses && typeof resolved.warehouseId === "string") {
+    const wh = catalogs.warehouses.find((w) => w.id === resolved.warehouseId);
+    if (wh) resolved.warehouseId = wh.name;
+  }
+  if (catalogs.categories && typeof resolved.categoryId === "string") {
+    const cat = catalogs.categories.find((c) => c.id === resolved.categoryId);
+    if (cat) resolved.categoryId = cat.name;
+  }
+  return resolved;
+}
 
 const ENTITY_LABELS: Record<string, string> = {
   Company: "Empresa",
@@ -90,11 +130,13 @@ function AuditDetailsDialog({
   open,
   onOpenChange,
   companyId,
+  catalogs,
 }: {
   log: AuditLogItem | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   companyId: string;
+  catalogs: AuditCatalogs;
 }) {
   const [entityLabel, setEntityLabel] = useState<string | null>(null);
 
@@ -171,7 +213,11 @@ function AuditDetailsDialog({
               <div className="flex-1 min-h-[120px] max-h-64 rounded border bg-slate-50 overflow-auto p-3">
                 <pre className="text-xs whitespace-pre-wrap break-words font-mono">
                   {log.old_values != null
-                    ? JSON.stringify(log.old_values, null, 2)
+                    ? JSON.stringify(
+                        resolveAuditValues(log.old_values, catalogs),
+                        null,
+                        2,
+                      )
                     : "—"}
                 </pre>
               </div>
@@ -183,7 +229,11 @@ function AuditDetailsDialog({
               <div className="flex-1 min-h-[120px] max-h-64 rounded border bg-slate-50 overflow-auto p-3">
                 <pre className="text-xs whitespace-pre-wrap break-words font-mono">
                   {log.new_values != null
-                    ? JSON.stringify(log.new_values, null, 2)
+                    ? JSON.stringify(
+                        resolveAuditValues(log.new_values, catalogs),
+                        null,
+                        2,
+                      )
                     : "—"}
                 </pre>
               </div>
@@ -208,7 +258,39 @@ export default function AuditPage({
   const [loading, setLoading] = useState(true);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [selectedLog, setSelectedLog] = useState<AuditLogItem | null>(null);
+  const [catalogs, setCatalogs] = useState<AuditCatalogs>({});
   const { toast } = useToast();
+
+  // Catálogos para resolver UUIDs en el modal (una sola vez al montar/cambiar empresa)
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      apiGet<Array<{ id: string; name: string }>>(
+        `/roles?companyId=${encodeURIComponent(companyId)}`,
+      ).catch(() => []),
+      apiGet<{ data?: Array<{ id: string; full_name: string }>; total?: number }>(
+        `/users/company/${companyId}?page=1&limit=500`,
+      )
+        .then((res) => (Array.isArray(res) ? res : res?.data ?? []))
+        .catch(() => []),
+      getCategoriesClient(companyId).catch(() => []),
+      apiGet<{ id: string; name: string }>(`/companies/${companyId}`).catch(
+        () => null,
+      ),
+    ]).then(([rolesData, usersData, categoriesData, companyInfo]) => {
+      if (cancelled) return;
+      const roles = Array.isArray(rolesData) ? rolesData : [];
+      const users = Array.isArray(usersData) ? usersData : [];
+      const categories = Array.isArray(categoriesData) ? categoriesData : [];
+      const companies = companyInfo
+        ? [{ id: companyId, name: companyInfo.name }]
+        : [];
+      setCatalogs({ roles, users, categories, companies });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -369,6 +451,7 @@ export default function AuditPage({
         open={detailsOpen}
         onOpenChange={setDetailsOpen}
         companyId={companyId}
+        catalogs={catalogs}
       />
     </div>
   );
