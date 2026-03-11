@@ -1324,5 +1324,17 @@ immediately. The API must maintain backward compatibility.
 | Changing HTTP status codes | **FORBIDDEN** — Flutter switch statements depend on them |
 | Changing error message field from `message` to anything else | **FORBIDDEN** |
 
-
+- En TypeORM, TODA propiedad cuyo nombre TypeScript difiera 
+  del nombre de columna en BD (camelCase vs snake_case) DEBE 
+  tener @Column({ name: 'snake_case_name' }) explícito.
+  Nunca omitir el name cuando la propiedad es camelCase.
+  Ejemplos obligatorios:
+    taxId       → @Column({ name: 'tax_id' })
+    isActive    → @Column({ name: 'is_active' })
+    companyId   → @Column({ name: 'company_id' })
+    createdAt   → @CreateDateColumn({ name: 'created_at' })
+  Las propiedades de una sola palabra en minúsculas (name, 
+  email, phone) no necesitan name explícito.
+  
+  
 *These rules are derived from the actual codebase architecture audit of `acontplusgestionpedidos`. Apply them without exception on every code generation.*
