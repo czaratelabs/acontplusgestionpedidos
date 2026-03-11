@@ -6,10 +6,6 @@ export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   const isProtectedRoute = pathname.startsWith("/dashboard");
-  const isAuthRoute =
-    pathname === "/login" ||
-    pathname === "/register" ||
-    pathname === "/";
 
   // Redirigir a login si accede a ruta protegida sin sesión
   if (isProtectedRoute && !token) {
@@ -18,9 +14,35 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  // Redirigir fuera de login/register si ya tiene sesión activa
-  if (isAuthRoute && token && pathname !== "/") {
-    return NextResponse.redirect(new URL("/", request.url));
+  // Redirigir desde /login o /register al destino final (evita bucle /login → / → /login)
+  if ((pathname === "/login" || pathname === "/register") && token) {
+    try {
+      const parts = token.split(".");
+      const base64Payload = parts[1];
+      if (!base64Payload) return NextResponse.next();
+      // JWT usa base64url: convertir a base64 estándar para atob (compatible con Edge)
+      const base64 = base64Payload.replace(/-/g, "+").replace(/_/g, "/");
+      const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), "=");
+      const payload = JSON.parse(atob(padded)) as {
+        isSuperAdmin?: boolean;
+        companyId?: string | null;
+      };
+      if (payload.isSuperAdmin) {
+        return NextResponse.redirect(
+          new URL("/dashboard/admin/subscriptions", request.url),
+        );
+      }
+      if (payload.companyId) {
+        return NextResponse.redirect(
+          new URL(`/dashboard/${payload.companyId}`, request.url),
+        );
+      }
+      // Token sin companyId ni superAdmin → dejar pasar a login
+      return NextResponse.next();
+    } catch {
+      // Token malformado → dejar pasar a login
+      return NextResponse.next();
+    }
   }
 
   return NextResponse.next();
