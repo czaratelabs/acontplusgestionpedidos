@@ -54,6 +54,28 @@ export class CompaniesService {
     });
   }
 
+  /**
+   * Obtiene una empresa por id validando que el usuario tenga acceso.
+   * SuperAdmin puede ver cualquier empresa; usuario normal solo la suya (companyId del JWT).
+   */
+  async findOneForUser(
+    id: string,
+    user: { companyId?: string | null; isSuperAdmin?: boolean },
+  ): Promise<Company> {
+    if (!id?.trim() || !isUuid(id)) {
+      throw new NotFoundException('Empresa no encontrada');
+    }
+    if (!user.isSuperAdmin && user.companyId !== id) {
+      throw new ForbiddenException('No tienes acceso a esta empresa');
+    }
+    const company = await this.companyRepository.findOne({
+      where: { id },
+      relations: ['plan'],
+    });
+    if (!company) throw new NotFoundException('Empresa no encontrada');
+    return company;
+  }
+
   async update(id: string, updateCompanyDto: UpdateCompanyDto): Promise<Company> {
     const company = await this.companyRepository.findOneBy({ id });
     if (!company) throw new NotFoundException('Empresa no encontrada');
