@@ -91,6 +91,12 @@ const ENTITY_LABELS: Record<string, string> = {
   BusinessRule: "Regla de Negocio",
   Article: "Artículo",
   ArticleVariant: "Variante de Artículo",
+  Brand: "Marca",
+  Category: "Categoría",
+  Measure: "Medida",
+  Color: "Color",
+  Size: "Talla",
+  Flavor: "Sabor",
 };
 
 function resolveEntityLabel(

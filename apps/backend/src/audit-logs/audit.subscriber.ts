@@ -23,6 +23,12 @@ import {
   SystemSetting,
   SYSTEM_TIMEZONE_KEY,
 } from '../system-settings/entities/system-setting.entity';
+import { Brand } from '../articles/entities/brand.entity';
+import { Category } from '../articles/entities/category.entity';
+import { Measure } from '../articles/entities/measure.entity';
+import { Color } from '../articles/entities/color.entity';
+import { Size } from '../articles/entities/size.entity';
+import { Flavor } from '../articles/entities/flavor.entity';
 
 const ALLOWED_ENTITIES = [
   Company,
@@ -36,6 +42,13 @@ const ALLOWED_ENTITIES = [
   Tax,
   Contact,
   SystemSetting,
+  // Catálogos de artículos
+  Brand,
+  Category,
+  Measure,
+  Color,
+  Size,
+  Flavor,
 ];
 
 function shouldAudit(entity: unknown): boolean {
