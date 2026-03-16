@@ -1,0 +1,12 @@
+Tarea técnica pendiente — backlog:
+
+Agregar endpoint GET /warehouses/company/:companyId en 
+apps/backend/src/warehouses/warehouses.controller.ts
+
+Retorno esperado: Array<{ id: string; name: string }>
+Guards: JwtAuthGuard + ModuleEnabledGuard('admin_establishments')
+Propósito: permitir que el módulo de auditoría resuelva 
+warehouseId a nombre legible en el modal de detalle.
+
+Una vez agregado, añadir al Promise.all de carga de 
+catálogos en apps/web/app/dashboard/[id]/settings/audit/page.tsx
