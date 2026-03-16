@@ -214,6 +214,9 @@ export function ArticleFormDialog({
     profitabilityConfig: generalForm.profitabilityConfig,
     applyCategoryCodes: (catId: string) => applyCategoryCodesRef.current?.(catId) ?? Promise.resolve(),
     setVariantsRef,
+    categorySecuencialInfo: generalForm.categorySecuencialInfo,
+    setLocalCategories: generalForm.setLocalCategories,
+    setCategorySecuencialInfo: generalForm.setCategorySecuencialInfo,
   });
   setVariantsRef.current = variantForm.setVariants;
   applyCategoryCodesRef.current = generalForm.applyCategoryCodes;
@@ -254,6 +257,35 @@ export function ArticleFormDialog({
   const [pendingTab, setPendingTab] = useState<string | null>(null);
   /** Confirmation for "Nuevo" when there are unsaved changes. */
   const [nuevoConfirmOpen, setNuevoConfirmOpen] = useState(false);
+
+  const [refreshingVariantIndex, setRefreshingVariantIndex] = useState<number | null>(null);
+
+  async function refreshVariantCodes(variantIndex: number) {
+    if (!generalForm.categoryId) return;
+    setRefreshingVariantIndex(variantIndex);
+    try {
+      const res = await apiFetch(
+        `/articles/catalogs/company/${companyId}/categories/${generalForm.categoryId}`,
+        { credentials: "include" }
+      );
+      if (!res.ok) throw new Error("No se pudo obtener el secuencial");
+      const freshCat = await res.json();
+      const siglas = freshCat.siglas?.trim();
+      const num = freshCat.secuencial_variantes ?? freshCat.secuencialVariantes ?? 1;
+      if (siglas && num != null) {
+        variantForm.updateVariant(variantIndex, "sku", "SKU" + siglas + String(num));
+        variantForm.updateVariant(variantIndex, "barcode", "CB" + siglas + String(num));
+      }
+    } catch (err) {
+      toast({
+        title: "Error al refrescar",
+        description: err instanceof Error ? err.message : "No se pudo obtener el secuencial.",
+        variant: "destructive",
+      });
+    } finally {
+      setRefreshingVariantIndex(null);
+    }
+  }
 
   async function saveGeneralArticleData() {
     const result = await generalForm.saveGeneralArticleData();
@@ -752,6 +784,8 @@ export function ArticleFormDialog({
               profitabilityConfig={generalForm.profitabilityConfig}
               applyProfilePercentages={applyProfilePercentages}
               formatCostIncIva={formatCostIncIva}
+              refreshVariantCodes={refreshVariantCodes}
+              refreshingVariantIndex={refreshingVariantIndex}
             />
 
             <TabsContent value="inventory" className="flex-1 overflow-y-auto min-h-0 mt-0 p-4 sm:p-6 md:p-8 space-y-4 data-[state=inactive]:hidden">

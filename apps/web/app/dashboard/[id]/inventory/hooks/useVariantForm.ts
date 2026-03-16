@@ -72,6 +72,10 @@ export type UseVariantFormParams = {
   } | null;
   applyCategoryCodes: (catId: string) => Promise<void>;
   setVariantsRef?: React.MutableRefObject<React.Dispatch<React.SetStateAction<VariantRow[]>> | undefined>;
+  /** Opcionales: para que addVariant actualice el secuencial desde BD y sincronice estado del formulario general */
+  categorySecuencialInfo?: { secuencial: number; secuencialVariantes: number } | null;
+  setLocalCategories?: React.Dispatch<React.SetStateAction<Array<{ id: string; name: string }>>>;
+  setCategorySecuencialInfo?: React.Dispatch<React.SetStateAction<{ secuencial: number; secuencialVariantes: number } | null>>;
 };
 
 export function useVariantForm({
@@ -87,6 +91,9 @@ export function useVariantForm({
   profitabilityConfig,
   applyCategoryCodes,
   setVariantsRef,
+  categorySecuencialInfo,
+  setLocalCategories,
+  setCategorySecuencialInfo,
 }: UseVariantFormParams) {
   const router = useRouter();
   const [effectiveArticleIdState, setEffectiveArticleIdState] = useState<string | null>(effectiveArticleIdParam);
@@ -332,19 +339,57 @@ export function useVariantForm({
     }
   }
 
-  function addVariant() {
+  async function addVariant() {
     const cat = localCategories.find((c) => c.id === categoryId) as Category | undefined;
-    const siglas = (cat as Category & { siglas?: string })?.siglas?.trim();
-    const secuencialVariante =
-      (cat as Category & { secuencialVariantes?: number })?.secuencialVariantes ??
-      (cat as Category)?.secuencial_variantes;
+    const siglas = (cat as Category & { siglas?: string })?.siglas?.trim() ?? "";
 
     let sku = "";
     let barcode = "";
-    if (siglas != null && secuencialVariante != null) {
-      const num = secuencialVariante + variants.length;
-      sku = "SKU" + siglas + String(num);
-      barcode = "CB" + siglas + String(num);
+    try {
+      if (categoryId && companyId) {
+        const res = await apiFetch(
+          `/articles/catalogs/company/${companyId}/categories/${categoryId}`,
+          { credentials: "include" }
+        );
+        if (res.ok) {
+          const freshCat = await res.json();
+          if (setLocalCategories) {
+            setLocalCategories((prev) => {
+              const idx = prev.findIndex((c) => c.id === categoryId);
+              if (idx >= 0) {
+                const next = [...prev];
+                next[idx] = { ...next[idx], ...freshCat };
+                return next;
+              }
+              return prev;
+            });
+          }
+          if (setCategorySecuencialInfo) {
+            setCategorySecuencialInfo({
+              secuencial: freshCat.secuencial ?? categorySecuencialInfo?.secuencial ?? 1,
+              secuencialVariantes:
+                freshCat.secuencial_variantes ?? freshCat.secuencialVariantes ?? 0,
+            });
+          }
+          const freshSiglas = freshCat.siglas?.trim() ?? siglas;
+          const freshNum =
+            freshCat.secuencial_variantes ?? freshCat.secuencialVariantes ?? 0;
+          if (freshSiglas !== "" || freshNum != null) {
+            sku = "SKU" + freshSiglas + String(freshNum);
+            barcode = "CB" + freshSiglas + String(freshNum);
+          }
+        }
+      }
+    } catch {
+      const secuencialVariante =
+        categorySecuencialInfo?.secuencialVariantes ??
+        (cat as Category & { secuencialVariantes?: number })?.secuencialVariantes ??
+        (cat as Category)?.secuencial_variantes;
+      if (siglas != null && secuencialVariante != null) {
+        const num = secuencialVariante + variants.length;
+        sku = "SKU" + siglas + String(num);
+        barcode = "CB" + siglas + String(num);
+      }
     }
 
     const baseVariant = { ...emptyVariant(), sku, barcode };

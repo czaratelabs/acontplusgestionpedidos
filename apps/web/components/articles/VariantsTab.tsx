@@ -1,6 +1,6 @@
 "use client";
 
-import { Plus, Trash2, Pencil, X, Check, Boxes } from "lucide-react";
+import { Plus, Trash2, Pencil, X, Check, Boxes, RefreshCw, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -115,6 +115,8 @@ export type VariantsTabProps = {
   } | null;
   applyProfilePercentages: () => void;
   formatCostIncIva: (cost: string | number, ivaPct: number) => string;
+  refreshVariantCodes: (variantIndex: number) => Promise<void>;
+  refreshingVariantIndex: number | null;
 };
 
 export function VariantsTab(props: VariantsTabProps) {
@@ -170,9 +172,11 @@ export function VariantsTab(props: VariantsTabProps) {
     startEditVariant,
     activeProfileName,
     profitabilityConfig,
-    applyProfilePercentages,
-    formatCostIncIva,
-  } = props;
+  applyProfilePercentages,
+  formatCostIncIva,
+  refreshVariantCodes,
+  refreshingVariantIndex,
+} = props;
 
   const {
     handleSalePriceCalculation,
@@ -355,13 +359,32 @@ export function VariantsTab(props: VariantsTabProps) {
                               <Label htmlFor={`sku-${i}`} className="text-xs">
                                 SKU <span className="text-red-500">*</span>
                               </Label>
-                              <Input
-                                id={`sku-${i}`}
-                                value={v.sku}
-                                onChange={(e) => updateVariant(i, "sku", e.target.value)}
-                                placeholder="Ej: SKU001"
-                                className="h-8 mt-0.5 min-w-[140px]"
-                              />
+                              <div className="flex items-center gap-1 mt-0.5">
+                                <Input
+                                  id={`sku-${i}`}
+                                  value={v.sku}
+                                  onChange={(e) => updateVariant(i, "sku", e.target.value)}
+                                  placeholder="Ej: SKU001"
+                                  className="h-8 min-w-[140px]"
+                                />
+                                {isEditingThis && !v.id && (
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="icon"
+                                    className="h-8 w-8 shrink-0"
+                                    onClick={() => refreshVariantCodes(i)}
+                                    disabled={refreshingVariantIndex === i}
+                                    title="Refrescar SKU y código de barras desde la base de datos"
+                                  >
+                                    {refreshingVariantIndex === i ? (
+                                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                    ) : (
+                                      <RefreshCw className="h-3.5 w-3.5" />
+                                    )}
+                                  </Button>
+                                )}
+                              </div>
                             </div>
                             <div className="sm:col-span-2">
                               <Label htmlFor={`barcode-${i}`} className="text-xs">

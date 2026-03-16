@@ -182,76 +182,91 @@ export function ArticlesTable({ companyId, articles, brands, categories, taxes, 
                 </TableCell>
               </TableRow>
             ) : (
-              articles.map((a) => {
-                const firstPrices = a.variants?.[0]?.prices?.[0];
-                return (
-                <TableRow key={a.id}>
-                  <TableCell><ArticleThumbnail article={a} /></TableCell>
-                  <TableCell>
-                    <div className="font-medium">{a.name}</div>
-                    {a.code && <div className="text-xs text-slate-500">{a.code}</div>}
-                  </TableCell>
-                  <TableCell>{a.brand?.name ?? "—"}</TableCell>
-                  <TableCell>{a.category?.name ?? "—"}</TableCell>
-                  <TableCell>
-                    <div className="flex flex-wrap gap-1">
-                      {a.variants?.map((v) => (
-                        <span
-                          key={v.id}
-                          className="inline-flex items-center rounded-md bg-acont-primary/10 text-acont-primary px-2 py-0.5 text-xs font-medium"
-                        >
-                          {v.sku}
-                          {v.barcode && ` · ${v.barcode}`}
-                          {(v.size?.name || v.color?.name || v.flavor?.name) &&
-                            ` · ${[v.size?.name, v.color?.name, v.flavor?.name].filter(Boolean).join(' · ')}`}
-                        </span>
-                      ))}
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums text-xs">
-                    {firstPrices?.pvp1 != null && Number(firstPrices.pvp1) > 0 ? Number(firstPrices.pvp1).toFixed(2) : "—"}
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums text-xs">
-                    {firstPrices?.pvp2 != null && Number(firstPrices.pvp2) > 0 ? Number(firstPrices.pvp2).toFixed(2) : "—"}
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums text-xs">
-                    {firstPrices?.pvp3 != null && Number(firstPrices.pvp3) > 0 ? Number(firstPrices.pvp3).toFixed(2) : "—"}
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums text-xs">
-                    {firstPrices?.pvp4 != null && Number(firstPrices.pvp4) > 0 ? Number(firstPrices.pvp4).toFixed(2) : "—"}
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums text-xs">
-                    {firstPrices?.pvp5 != null && Number(firstPrices.pvp5) > 0 ? Number(firstPrices.pvp5).toFixed(2) : "—"}
-                  </TableCell>
-                  <TableCell>{a.tax?.name ?? "—"}</TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-2">
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        className="h-8 w-8 border-acont-primary/30 text-acont-primary hover:bg-acont-primary/10"
-                        onClick={() => {
-                          setEditingArticle(a);
-                          setArticleFormOpen(true);
-                        }}
-                        aria-label="Editar artículo"
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        className="h-8 w-8 text-red-600 hover:text-red-700 border-red-200 hover:bg-red-50"
-                        onClick={() => setArticleToDelete(a)}
-                        disabled={deletingId === a.id}
-                        aria-label="Eliminar artículo"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              );
+              articles.flatMap((a) => {
+                const variantCount = a.variants?.length || 1;
+                return (a.variants?.length ? a.variants : [null]).map((variant, vIdx) => {
+                  const prices = variant?.prices?.[0];
+                  const isFirst = vIdx === 0;
+                  const variantLabel = variant
+                    ? [variant.sku, variant.barcode, variant.color?.name, variant.size?.name, variant.flavor?.name]
+                        .filter(Boolean)
+                        .join(" · ")
+                    : "—";
+
+                  return (
+                    <TableRow
+                      key={`${a.id}-${vIdx}`}
+                      className={isFirst ? "border-t-2 border-slate-200" : undefined}
+                    >
+                      {isFirst && (
+                        <TableCell rowSpan={variantCount}>
+                          <ArticleThumbnail article={a} />
+                        </TableCell>
+                      )}
+                      {isFirst && (
+                        <TableCell rowSpan={variantCount}>
+                          <div className="font-medium">{a.name}</div>
+                          {a.code && <div className="text-xs text-slate-500">{a.code}</div>}
+                        </TableCell>
+                      )}
+                      {isFirst && (
+                        <TableCell rowSpan={variantCount}>{a.brand?.name ?? "—"}</TableCell>
+                      )}
+                      {isFirst && (
+                        <TableCell rowSpan={variantCount}>{a.category?.name ?? "—"}</TableCell>
+                      )}
+                      <TableCell>
+                        <span className="text-xs text-acont-primary font-medium">{variantLabel}</span>
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums text-xs">
+                        {prices?.pvp1 != null && Number(prices.pvp1) > 0 ? Number(prices.pvp1).toFixed(2) : "—"}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums text-xs">
+                        {prices?.pvp2 != null && Number(prices.pvp2) > 0 ? Number(prices.pvp2).toFixed(2) : "—"}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums text-xs">
+                        {prices?.pvp3 != null && Number(prices.pvp3) > 0 ? Number(prices.pvp3).toFixed(2) : "—"}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums text-xs">
+                        {prices?.pvp4 != null && Number(prices.pvp4) > 0 ? Number(prices.pvp4).toFixed(2) : "—"}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums text-xs">
+                        {prices?.pvp5 != null && Number(prices.pvp5) > 0 ? Number(prices.pvp5).toFixed(2) : "—"}
+                      </TableCell>
+                      {isFirst && (
+                        <TableCell rowSpan={variantCount}>{a.tax?.name ?? "—"}</TableCell>
+                      )}
+                      {isFirst && (
+                        <TableCell rowSpan={variantCount} className="text-right">
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              className="h-8 w-8 border-acont-primary/30 text-acont-primary hover:bg-acont-primary/10"
+                              onClick={() => {
+                                setEditingArticle(a);
+                                setArticleFormOpen(true);
+                              }}
+                              aria-label="Editar artículo"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              className="h-8 w-8 text-red-600 hover:text-red-700 border-red-200 hover:bg-red-50"
+                              onClick={() => setArticleToDelete(a)}
+                              disabled={deletingId === a.id}
+                              aria-label="Eliminar artículo"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      )}
+                    </TableRow>
+                  );
+                });
               })
             )}
           </TableBody>
