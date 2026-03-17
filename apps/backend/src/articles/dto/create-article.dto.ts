@@ -7,6 +7,7 @@ import {
   ValidateNested,
   IsNumber,
   Min,
+  IsBoolean,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -114,6 +115,31 @@ export class CreateArticleVariantDto {
   @IsOptional()
   @IsUUID()
   measureId?: string | null;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Type(() => Number)
+  conversionFactor?: number | null;
+
+  @IsOptional()
+  @IsBoolean()
+  @Type(() => Boolean)
+  isFraction?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  @Type(() => Boolean)
+  isDefault?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  @Type(() => Boolean)
+  isVisible?: boolean;
+
+  @IsOptional()
+  @IsUUID()
+  secondaryMeasureId?: string | null;
 
   @IsOptional()
   @IsNumber()

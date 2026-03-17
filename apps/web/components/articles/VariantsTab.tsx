@@ -1,6 +1,6 @@
 "use client";
 
-import { Plus, Trash2, Pencil, X, Check, Boxes, RefreshCw, Loader2 } from "lucide-react";
+import { Plus, Trash2, Pencil, X, Check, RefreshCw, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -31,12 +31,11 @@ import { formatDecimal } from "@/lib/cost-iva";
 import {
   type VariantRow,
   type PricesRow,
-  type FractionConfig,
   TARIFAS_KEYS,
-  emptyPrices,
 } from "@/lib/types/article.types";
 import type { UsePriceCalculationReturn } from "@/lib/hooks/usePriceCalculation";
 import { safeParseVariantAtIndex } from "@/lib/validations/article.schema";
+import { useToast } from "@/components/ui/use-toast";
 
 export type VariantsTabTax = { id: string; percentage: number };
 
@@ -78,21 +77,14 @@ export type VariantsTabProps = {
   updateVariant: (
     index: number,
     field: keyof VariantRow,
-    value: string | PricesRow | { barcode: string; description: string }[] | boolean | FractionConfig[],
+    value: string | PricesRow | { barcode: string; description: string }[] | boolean,
   ) => void;
   updateVariantPriceField: (variantIndex: number, field: keyof PricesRow, value: string) => void;
-  updateVariantFractionPriceField: (variantIndex: number, field: keyof PricesRow, value: string) => void;
   handleCostChange: (variantIndex: number, rawValue: string) => void;
   handleCostIncIvaChange: (variantIndex: number, rawValue: string) => void;
-  toggleFractionEnabled: (variantIndex: number) => void;
-  updateFractionField: (
-    variantIndex: number,
-    fractionIndex: number,
-    field: keyof FractionConfig,
-    value: string,
-  ) => void;
-  addFraction: (variantIndex: number) => void;
-  removeFraction: (variantIndex: number, fractionIndex: number) => void;
+  handleConversionFactorChange: (variantIndex: number, factor: string) => void;
+  handleSourceVariantChange: (variantIndex: number, sourceId: string) => void;
+  handleSetDefaultVariant: (variantIndex: number, checked: boolean) => void;
   additionalBarcodeInputByIndex: Record<number, string>;
   setAdditionalBarcodeInputByIndex: React.Dispatch<React.SetStateAction<Record<number, string>>>;
   editingBarcodeDescription: { variantIndex: number; barcodeIndex: number } | null;
@@ -152,13 +144,11 @@ export function VariantsTab(props: VariantsTabProps) {
     focusPctRentBelow,
     updateVariant,
     updateVariantPriceField,
-    updateVariantFractionPriceField,
     handleCostChange,
     handleCostIncIvaChange,
-    toggleFractionEnabled,
-    updateFractionField,
-    addFraction,
-    removeFraction,
+    handleConversionFactorChange,
+    handleSourceVariantChange,
+    handleSetDefaultVariant,
     additionalBarcodeInputByIndex,
     setAdditionalBarcodeInputByIndex,
     editingBarcodeDescription,
@@ -178,15 +168,15 @@ export function VariantsTab(props: VariantsTabProps) {
   refreshingVariantIndex,
 } = props;
 
+  const { toast } = useToast();
+
   const {
     handleSalePriceCalculation,
     handlePvpCalculation,
     handleCostToPriceCalculation,
     applyPctRentBlurOrEnter,
-    handleFractionSalePriceCalculation,
-    handleFractionPvpCalculation,
-    applyFractionPctRentBlurOrEnter,
-    getFractionCost,
+    applyPvpCellBlurOrEnter,
+    refreshRentabilidadOnCostBlur,
   } = pricing;
 
   return (
@@ -252,6 +242,15 @@ export function VariantsTab(props: VariantsTabProps) {
             const isEditingThis = editingVariantIndex === i;
             const isExpanded = expandedVariantIndex === i;
             const canEditOther = editingVariantIndex == null;
+            // Medida que debe bloquearse: la medida de la variante base cuando es fracción
+            const blockedMeasureId: string | null = (() => {
+              if (!v.isFraction || !v.sourceVariantId) return null;
+              const sourceVariant = variants.find((sv) => sv.id === v.sourceVariantId);
+              return sourceVariant?.measureId ?? null;
+            })();
+            const filteredMeasures = blockedMeasureId
+              ? localMeasures.filter((m) => m.id !== blockedMeasureId)
+              : localMeasures;
             return (
               <Collapsible
                 key={i}
@@ -484,18 +483,173 @@ export function VariantsTab(props: VariantsTabProps) {
                                 />
                               </div>
                             </div>
-                            <div>
-                              <Label className="text-xs text-slate-500">IVA (informativo)</Label>
-                              <p className="text-xs font-medium text-slate-700 mt-0.5">
-                                {taxId
-                                  ? taxes.find((t) => t.id === taxId)?.percentage ?? "—"
-                                  : "—"}
-                                %
-                              </p>
+                          </div>
+                          {/* Checkbox Fraccionar Variante — solo desde la 2da variante */}
+                          {variants.length > 1 && (
+                            <div className="flex items-center gap-2 mb-2">
+                              <input
+                                type="checkbox"
+                                id={`isFraction-${i}`}
+                                checked={!!v.isFraction}
+                                onChange={(e) =>
+                                  updateVariant(i, "isFraction", e.target.checked)
+                                }
+                                className="h-4 w-4 rounded border-slate-300 text-acont-primary focus:ring-acont-primary"
+                              />
+                              <Label htmlFor={`isFraction-${i}`} className="text-xs font-medium cursor-pointer">
+                                Fraccionar Variante
+                              </Label>
+                            </div>
+                          )}
+                          {/* Panel de fraccionamiento — visible solo si isFraction === true y más de 1 variante */}
+                          {variants.length > 1 && v.isFraction && (
+                            <div className="rounded-lg border border-blue-200 bg-blue-50/50 p-3 mb-3 space-y-3">
+                              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                                <div>
+                                  <Label className="text-xs font-medium text-blue-700">
+                                    Variante base <span className="text-red-500">*</span>
+                                  </Label>
+                                  <select
+                                    className="h-8 mt-0.5 w-full rounded-md border border-slate-300 bg-white px-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-400"
+                                    value={v.sourceVariantId ?? ""}
+                                    onChange={(e) => handleSourceVariantChange(i, e.target.value)}
+                                  >
+                                    <option value="">— Seleccionar variante —</option>
+                                    {variants
+                                      .filter((sv, si) => si !== i && !!sv.id)
+                                      .map((sv) => {
+                                        const measure = localMeasures.find((m) => m.id === sv.measureId);
+                                        return (
+                                          <option key={sv.id} value={sv.id}>
+                                            {sv.sku}{measure ? ` · ${measure.name}` : ""}
+                                          </option>
+                                        );
+                                      })}
+                                  </select>
+                                </div>
+                                {v.sourceVariantId && (() => {
+                                  const sv = variants.find((x) => x.id === v.sourceVariantId);
+                                  if (!sv) return null;
+                                  const measure = localMeasures.find((m) => m.id === sv.measureId);
+                                  return (
+                                    <div className="flex flex-col justify-center gap-0.5 rounded-md border border-blue-200 bg-white px-3 py-2 text-xs text-slate-600">
+                                      <span className="font-medium text-slate-800">{sv.sku}</span>
+                                      {measure && <span>Medida: <strong>{measure.name}</strong></span>}
+                                      <span>Costo s/IVA: <strong>{sv.cost}</strong></span>
+                                      <span>Costo c/IVA: <strong>{sv.costIncIva ?? "—"}</strong></span>
+                                    </div>
+                                  );
+                                })()}
+                              </div>
+                              <div className="max-w-xs">
+                                <Label className="text-xs font-medium text-blue-700">
+                                  Factor de conversión <span className="text-red-500">*</span>
+                                </Label>
+                                <p className="text-[11px] text-slate-500 mb-1">
+                                  Costo = Costo base ÷ Factor. Ej: Factor 4 → costo = costo base / 4
+                                </p>
+                                <Input
+                                  type="number"
+                                  min={0.00001}
+                                  step="any"
+                                  placeholder="Ej: 4"
+                                  value={v.conversionFactor ?? ""}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    if (val !== "" && !/^-?\d*[.,]?\d*$/.test(val)) return;
+                                    updateVariant(i, "conversionFactor", val);
+                                  }}
+                                  onBlur={(e) => {
+                                    const val = e.target.value.trim();
+                                    if (!val) return;
+                                    const num = parseFloat(val.replace(",", ".")) || 0;
+                                    if (num <= 0) return;
+                                    if (!v.sourceVariantId) return;
+                                    handleConversionFactorChange(i, val);
+                                  }}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+
+                                      const val = (e.target as HTMLInputElement).value.trim();
+
+                                      if (!val) {
+                                        toast({
+                                          title: "Factor requerido",
+                                          description:
+                                            "Ingresa el factor de conversión antes de continuar.",
+                                          variant: "destructive",
+                                        });
+                                        return;
+                                      }
+
+                                      const num = parseFloat(val.replace(",", ".")) || 0;
+                                      if (num <= 0) {
+                                        toast({
+                                          title: "Factor inválido",
+                                          description:
+                                            "El factor de conversión debe ser un número mayor a cero.",
+                                          variant: "destructive",
+                                        });
+                                        return;
+                                      }
+
+                                      if (!v.sourceVariantId) {
+                                        toast({
+                                          title: "Selecciona la variante base",
+                                          description:
+                                            "Debes seleccionar la variante base antes de ingresar el factor.",
+                                          variant: "destructive",
+                                        });
+                                        return;
+                                      }
+
+                                      handleConversionFactorChange(i, val);
+
+                                      setTimeout(() => {
+                                        const wrapper = document.getElementById(
+                                          `measure-wrapper-${i}`,
+                                        );
+                                        const focusable = wrapper?.querySelector(
+                                          "button, select, input",
+                                        ) as HTMLElement | null;
+                                        if (focusable) focusable.focus();
+                                      }, 50);
+                                    }
+                                  }}
+                                  className="h-8 mt-0.5"
+                                />
+                              </div>
+                            </div>
+                          )}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 items-end">
+                            <div id={`measure-wrapper-${i}`}>
+                              <Label htmlFor={`measure-${i}`} className="text-xs">
+                                Medida <span className="text-red-500">*</span>
+                              </Label>
+                              <CatalogSelectWithCreate
+                                companyId={companyId}
+                                catalogKey="measures"
+                                items={filteredMeasures}
+                                value={v.measureId}
+                                onChange={(val) => updateVariant(i, "measureId", val)}
+                                onItemCreated={(item) =>
+                                  setLocalMeasures((prev) => [...prev, item])
+                                }
+                                emptyLabel="— Seleccionar —"
+                                valueKey="id"
+                                selectClassName="h-8 mt-0.5 w-full"
+                              />
+                              {isEditingThis && blockedMeasureId && (
+                                <p className="text-[11px] text-amber-600 mt-0.5">
+                                  La medida &quot;{localMeasures.find((m) => m.id === blockedMeasureId)?.name ?? ""}&quot; no está disponible (es la medida de la variante base).
+                                </p>
+                              )}
                             </div>
                             <div>
                               <Label htmlFor={`cost-${i}`} className="text-xs">
-                                Precio de Costo SIN IVA <span className="text-red-500">*</span>
+                                Costo SIN IVA <span className="text-red-500">*</span>
                               </Label>
                               <Input
                                 id={`cost-${i}`}
@@ -518,7 +672,7 @@ export function VariantsTab(props: VariantsTabProps) {
                             </div>
                             <div>
                               <Label htmlFor={`costIncIva-${i}`} className="text-xs">
-                                Precio de Costo INC. IVA <span className="text-red-500">*</span>
+                                Costo INC IVA <span className="text-red-500">*</span>
                               </Label>
                               <Input
                                 id={`costIncIva-${i}`}
@@ -550,140 +704,15 @@ export function VariantsTab(props: VariantsTabProps) {
                                 className="h-8 mt-0.5 w-full"
                               />
                             </div>
-                            <div className="flex flex-col sm:flex-row sm:items-end gap-2">
-                              <div className="flex-1 min-w-0">
-                                <Label htmlFor={`measure-${i}`} className="text-xs">
-                                  Medida <span className="text-red-500">*</span>
-                                </Label>
-                                <CatalogSelectWithCreate
-                                  companyId={companyId}
-                                  catalogKey="measures"
-                                  items={localMeasures}
-                                  value={v.measureId}
-                                  onChange={(val) => updateVariant(i, "measureId", val)}
-                                  onItemCreated={(item) =>
-                                    setLocalMeasures((prev) => [...prev, item])
-                                  }
-                                  emptyLabel="— Seleccionar —"
-                                  valueKey="id"
-                                  selectClassName="h-8 mt-0.5 w-full"
-                                />
+                            <div className="flex items-end gap-2">
+                              <div className="flex-1">
+                                <Label className="text-xs text-slate-500">% IVA</Label>
+                                <div className="h-8 mt-0.5 flex items-center px-3 rounded-md border border-slate-200 bg-slate-50 text-xs text-slate-600 font-medium tabular-nums">
+                                  {taxId ? `${taxes.find((t) => t.id === taxId)?.percentage ?? 0}%` : "—"}
+                                </div>
                               </div>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                className="h-8 px-2 shrink-0 border-[var(--acont-secondary)] text-[var(--acont-secondary)] hover:bg-[#FFA901]/10 data-[active]:bg-[#FFA901]/20"
-                                onClick={() => toggleFractionEnabled(i)}
-                                title={
-                                  v.fractionEnabled
-                                    ? "Desactivar unidades fraccionarias"
-                                    : "Activar unidades fraccionarias (ej. venta por metro)"
-                                }
-                                data-active={v.fractionEnabled ? "true" : undefined}
-                              >
-                                <Boxes className="h-4 w-4" />
-                              </Button>
                             </div>
                           </div>
-                          <Collapsible open={v.fractionEnabled}>
-                            <CollapsibleContent>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 rounded-lg border border-[#FFA901]/30 bg-[#FFA901]/5 p-4 mt-2 transition-all duration-200 ease-out">
-                                <div className="sm:col-span-full">
-                                  <h4 className="text-xs font-semibold text-slate-700 mb-2 flex items-center gap-1.5">
-                                    <Boxes className="h-3.5 w-3.5 text-[var(--acont-secondary)]" />
-                                    Configuración de unidades fraccionarias
-                                  </h4>
-                                  <p className="text-[11px] text-slate-500 mb-3">
-                                    Factor relativo a{" "}
-                                    <strong>
-                                      {v.measureId
-                                        ? localMeasures.find((m) => m.id === v.measureId)?.name ??
-                                          "Unidad"
-                                        : "Unidad"}
-                                    </strong>{" "}
-                                    (medida base).
-                                  </p>
-                                </div>
-                                {(v.fractions ?? []).map((frac, fj) => (
-                                  <div
-                                    key={fj}
-                                    className="rounded border border-slate-200 bg-white dark:bg-slate-800/50 p-3 space-y-2"
-                                  >
-                                    <div className="flex items-center justify-between gap-2">
-                                      <span className="text-xs font-medium text-slate-600">
-                                        Fracción {fj + 1}
-                                      </span>
-                                      {(v.fractions?.length ?? 0) > 1 && (
-                                        <Button
-                                          type="button"
-                                          variant="ghost"
-                                          size="sm"
-                                          className="h-6 w-6 p-0 text-slate-500 hover:text-destructive"
-                                          onClick={() => removeFraction(i, fj)}
-                                          aria-label="Quitar fracción"
-                                        >
-                                          <X className="h-3.5 w-3.5" />
-                                        </Button>
-                                      )}
-                                    </div>
-                                    <div>
-                                      <Label className="text-xs">Nombre sub-unidad</Label>
-                                      <Input
-                                        placeholder="Ej: Metro"
-                                        value={frac.fraction_name}
-                                        onChange={(e) =>
-                                          updateFractionField(i, fj, "fraction_name", e.target.value)
-                                        }
-                                        className="h-8 mt-0.5 text-xs"
-                                      />
-                                    </div>
-                                    <div>
-                                      <Label className="text-xs">
-                                        Factor de conversión (0 &lt; factor ≤ 1)
-                                      </Label>
-                                      <Input
-                                        type="number"
-                                        min={0.00001}
-                                        max={1}
-                                        step={0.01}
-                                        placeholder="Ej: 0.10 (1 unidad = 10 fracciones)"
-                                        value={frac.conversion_factor}
-                                        onChange={(e) =>
-                                          updateFractionField(
-                                            i,
-                                            fj,
-                                            "conversion_factor",
-                                            e.target.value,
-                                          )
-                                        }
-                                        className="h-8 mt-0.5 text-xs"
-                                      />
-                                    </div>
-                                    <div>
-                                      <Label className="text-xs text-slate-500">
-                                        Coste fracción (solo lectura)
-                                      </Label>
-                                      <p className="text-sm font-medium tabular-nums mt-0.5 text-[var(--acont-secondary)]">
-                                        {formatDecimal(getFractionCost(v))}
-                                      </p>
-                                    </div>
-                                  </div>
-                                ))}
-                                <div className="flex items-end">
-                                  <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="sm"
-                                    className="text-xs border-dashed border-[var(--acont-secondary)] text-[var(--acont-secondary)]"
-                                    onClick={() => addFraction(i)}
-                                  >
-                                    + Añadir otra fracción
-                                  </Button>
-                                </div>
-                              </div>
-                            </CollapsibleContent>
-                          </Collapsible>
                           <div>
                             <Label className="mb-1 block text-xs">Tarifas PVP</Label>
                             <div className="rounded border bg-slate-50/50 overflow-hidden max-w-4xl [&_th]:py-1 [&_th]:px-2 [&_td]:py-0.5 [&_td]:px-1.5">
@@ -735,38 +764,6 @@ export function VariantsTab(props: VariantsTabProps) {
                                             }}
                                             className="h-7 w-full min-w-[7rem] max-w-[8.5rem] text-xs border-[var(--acont-primary)]/50 bg-[#D61672]/10 focus-visible:ring-[var(--acont-primary)]"
                                           />
-                                          {v.fractionEnabled &&
-                                            (v.fractions ?? []).length > 0 && (
-                                              <Input
-                                                id={`frac-precioVenta-${i}-${key}`}
-                                                type="number"
-                                                min={0}
-                                                step={0.00001}
-                                                placeholder="Fracción"
-                                                value={
-                                                  (v.fractionPrices ?? emptyPrices())[
-                                                    `precioVenta${key}` as keyof PricesRow
-                                                  ] ?? ""
-                                                }
-                                                onChange={(e) =>
-                                                  updateVariantFractionPriceField(
-                                                    i,
-                                                    `precioVenta${key}` as keyof PricesRow,
-                                                    e.target.value,
-                                                  )
-                                                }
-                                                onFocus={(e) => e.currentTarget.select()}
-                                                onBlur={() => handleFractionSalePriceCalculation(i, key)}
-                                                onKeyDown={(e) => {
-                                                  if (e.key === "Enter") {
-                                                    e.preventDefault();
-                                                    e.stopPropagation();
-                                                    handleFractionSalePriceCalculation(i, key);
-                                                  }
-                                                }}
-                                                className="h-6 w-full min-w-[7rem] max-w-[8.5rem] text-xs border-[#FFA901]/50 bg-[#FFA901]/15 focus-visible:ring-[#FFA901]"
-                                              />
-                                            )}
                                         </div>
                                       </TableCell>
                                       <TableCell className="p-0.5 align-top">
@@ -798,38 +795,6 @@ export function VariantsTab(props: VariantsTabProps) {
                                             }}
                                             className="h-7 w-full min-w-[7rem] max-w-[8.5rem] text-xs border-[var(--acont-primary)]/50 bg-[#D61672]/10 focus-visible:ring-[var(--acont-primary)]"
                                           />
-                                          {v.fractionEnabled &&
-                                            (v.fractions ?? []).length > 0 && (
-                                              <Input
-                                                id={`frac-pvp-${i}-${key}`}
-                                                type="number"
-                                                min={0}
-                                                step={0.00001}
-                                                placeholder="Fracción"
-                                                value={
-                                                  (v.fractionPrices ?? emptyPrices())[
-                                                    `pvp${key}` as keyof PricesRow
-                                                  ] ?? ""
-                                                }
-                                                onChange={(e) =>
-                                                  updateVariantFractionPriceField(
-                                                    i,
-                                                    `pvp${key}` as keyof PricesRow,
-                                                    e.target.value,
-                                                  )
-                                                }
-                                                onFocus={(e) => e.currentTarget.select()}
-                                                onBlur={() => handleFractionPvpCalculation(i, key)}
-                                                onKeyDown={(e) => {
-                                                  if (e.key === "Enter") {
-                                                    e.preventDefault();
-                                                    e.stopPropagation();
-                                                    handleFractionPvpCalculation(i, key);
-                                                  }
-                                                }}
-                                                className="h-6 w-full min-w-[7rem] max-w-[8.5rem] text-xs border-[#FFA901]/50 bg-[#FFA901]/15 focus-visible:ring-[#FFA901]"
-                                              />
-                                            )}
                                         </div>
                                       </TableCell>
                                       <TableCell className="p-0.5 align-top">
@@ -864,40 +829,6 @@ export function VariantsTab(props: VariantsTabProps) {
                                             }}
                                             className="h-7 w-full min-w-[5.5rem] max-w-[6.5rem] text-xs border-[var(--acont-primary)]/50 bg-[#D61672]/10 focus-visible:ring-[var(--acont-primary)]"
                                           />
-                                          {v.fractionEnabled &&
-                                            (v.fractions ?? []).length > 0 && (
-                                              <Input
-                                                id={`frac-pctRent-${i}-${key}`}
-                                                type="number"
-                                                min={-100}
-                                                step={0.00001}
-                                                placeholder="%"
-                                                value={
-                                                  (v.fractionPrices ?? emptyPrices())[
-                                                    `porcentajeRentabilidad${key}` as keyof PricesRow
-                                                  ] ?? ""
-                                                }
-                                                onChange={(e) =>
-                                                  updateVariantFractionPriceField(
-                                                    i,
-                                                    `porcentajeRentabilidad${key}` as keyof PricesRow,
-                                                    e.target.value,
-                                                  )
-                                                }
-                                                onFocus={(e) => e.currentTarget.select()}
-                                                onBlur={() =>
-                                                  applyFractionPctRentBlurOrEnter(i, key)
-                                                }
-                                                onKeyDown={(e) => {
-                                                  if (e.key === "Enter") {
-                                                    e.preventDefault();
-                                                    e.stopPropagation();
-                                                    applyFractionPctRentBlurOrEnter(i, key);
-                                                  }
-                                                }}
-                                                className="h-6 w-full min-w-[5.5rem] max-w-[6.5rem] text-xs border-[#FFA901]/50 bg-[#FFA901]/15 focus-visible:ring-[#FFA901]"
-                                              />
-                                            )}
                                         </div>
                                       </TableCell>
                                       <TableCell className="py-0.5 px-1 min-w-[5rem] align-top">
@@ -913,20 +844,6 @@ export function VariantsTab(props: VariantsTabProps) {
                                                   ] ?? 0,
                                                 )}
                                           </span>
-                                          {v.fractionEnabled &&
-                                            (v.fractions ?? []).length > 0 && (
-                                              <span className="text-xs tabular-nums text-[#FFA901]">
-                                                {((v.fractionPrices ?? emptyPrices())[
-                                                  `rentabilidad${key}` as keyof PricesRow
-                                                ] ?? "") === ""
-                                                  ? ""
-                                                  : formatDecimal(
-                                                      (v.fractionPrices ?? emptyPrices())[
-                                                        `rentabilidad${key}` as keyof PricesRow
-                                                      ] ?? 0,
-                                                    )}
-                                              </span>
-                                            )}
                                         </div>
                                       </TableCell>
                                       <TableCell className="py-0.5 px-1 min-w-[5rem] align-top">
@@ -942,20 +859,6 @@ export function VariantsTab(props: VariantsTabProps) {
                                                   ] ?? 0,
                                                 )}
                                           </span>
-                                          {v.fractionEnabled &&
-                                            (v.fractions ?? []).length > 0 && (
-                                              <span className="text-xs tabular-nums text-[#FFA901]">
-                                                {((v.fractionPrices ?? emptyPrices())[
-                                                  `rentabilidadIncIva${key}` as keyof PricesRow
-                                                ] ?? "") === ""
-                                                  ? ""
-                                                  : formatDecimal(
-                                                      (v.fractionPrices ?? emptyPrices())[
-                                                        `rentabilidadIncIva${key}` as keyof PricesRow
-                                                      ] ?? 0,
-                                                    )}
-                                              </span>
-                                            )}
                                         </div>
                                       </TableCell>
                                     </TableRow>
@@ -1058,6 +961,37 @@ export function VariantsTab(props: VariantsTabProps) {
                                 className="h-8 mt-0.5 w-full"
                               />
                             </div>
+                          </div>
+                        </div>
+                        {/* Flags de visibilidad y ventas */}
+                        <div className="flex flex-wrap gap-6 pt-3 mt-1 border-t border-slate-100">
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              id={`isDefault-${i}`}
+                              checked={!!v.isDefault}
+                              onChange={(e) =>
+                                handleSetDefaultVariant(i, e.target.checked)
+                              }
+                              className="h-4 w-4 rounded border-slate-300 text-acont-primary focus:ring-acont-primary"
+                            />
+                            <Label htmlFor={`isDefault-${i}`} className="text-xs cursor-pointer">
+                              Mostrar como predeterminada en ventas
+                            </Label>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              id={`isVisible-${i}`}
+                              checked={v.isVisible !== false}
+                              onChange={(e) =>
+                                updateVariant(i, "isVisible", e.target.checked)
+                              }
+                              className="h-4 w-4 rounded border-slate-300 text-acont-primary focus:ring-acont-primary"
+                            />
+                            <Label htmlFor={`isVisible-${i}`} className="text-xs cursor-pointer">
+                              Visible para usar en transacciones de ventas
+                            </Label>
                           </div>
                         </div>
                         {isEditingThis && (

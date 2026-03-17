@@ -32,7 +32,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useToast } from "@/components/ui/use-toast";
 import { format, differenceInDays } from "date-fns";
 import { es } from "date-fns/locale";
-import { formatDecimal, formatCostIncIva } from "@/lib/cost-iva";
+import { formatDecimal, formatCostIncIva, costToCostIncIva } from "@/lib/cost-iva";
 import { roundToFive } from "@/lib/math.util";
 import { apiFetch, API_BASE } from "@/lib/api-client";
 import {
@@ -330,6 +330,155 @@ export function ArticleFormDialog({
     );
   }
 
+  /**
+   * Calcula el costo de la variante fraccionada dividiendo el costo de la variante
+   * fuente por el factor de conversión, y luego recalcula las tarifas.
+   */
+  function handleConversionFactorChange(
+    variantIndex: number,
+    factor: string,
+    sourceIdOverride?: string,
+  ) {
+    const variants = variantForm.variants;
+    const v = variants[variantIndex];
+    if (!v?.isFraction) return;
+
+    const sourceId = sourceIdOverride ?? v.sourceVariantId;
+    if (!sourceId) return;
+
+    variantForm.updateVariant(variantIndex, "conversionFactor", factor);
+
+    const factorNum = parseFloat(factor.replace(",", ".")) || 0;
+    if (factorNum <= 0) return;
+
+    const ivaPct = generalForm.taxId
+      ? (taxes.find((t) => t.id === generalForm.taxId)?.percentage ?? 0)
+      : 0;
+
+    const sourceVariant = variants.find((sv) => sv.id === sourceId);
+    if (!sourceVariant) return;
+
+    const sourceCost = parseFloat(String(sourceVariant.cost ?? "0")) || 0;
+    const sourceCostIncIva = roundToFive(
+      costToCostIncIva(sourceCost, ivaPct),
+      5,
+    );
+
+    const newCost = roundToFive(sourceCost / factorNum, 5);
+    const newCostIncIva = roundToFive(sourceCostIncIva / factorNum, 5);
+
+    variantForm.setVariants((prev) => {
+      const next = [...prev];
+      const curr = next[variantIndex];
+      if (!curr) return prev;
+      next[variantIndex] = {
+        ...curr,
+        conversionFactor: factor,
+        cost: formatDecimal(newCost),
+        costIncIva: formatDecimal(newCostIncIva),
+      };
+      return next;
+    });
+
+    setTimeout(() => {
+      pricing.handleCostToPriceCalculation(variantIndex, "sinIva", false);
+    }, 0);
+  }
+
+  /**
+   * Al seleccionar la variante base en el combo de fraccionamiento:
+   * 1. Actualiza sourceVariantId en el estado.
+   * 2. Calcula el costIncIva de la variante base usando el IVA del artículo actual.
+   * 3. Si hay factor de conversión previo válido, recalcula los costos de la
+   *    variante fraccionada y sus tarifas.
+   */
+  function handleSourceVariantChange(variantIndex: number, sourceId: string) {
+    const ivaPct = generalForm.taxId
+      ? (taxes.find((t) => t.id === generalForm.taxId)?.percentage ?? 0)
+      : 0;
+
+    variantForm.setVariants((prev) => {
+      const next = [...prev];
+      const curr = next[variantIndex];
+      if (!curr) return prev;
+
+      const sourceVariant = next.find((sv) => sv.id === sourceId);
+      let sourceCostIncIvaCalculado = "";
+      if (sourceVariant) {
+        const sourceCost =
+          parseFloat(String(sourceVariant.cost ?? "0")) || 0;
+        const incIva = roundToFive(
+          costToCostIncIva(sourceCost, ivaPct),
+          5,
+        );
+        sourceCostIncIvaCalculado = formatDecimal(incIva);
+        const sourceIdx = next.findIndex((sv) => sv.id === sourceId);
+        if (sourceIdx >= 0) {
+          next[sourceIdx] = {
+            ...next[sourceIdx],
+            costIncIva: sourceCostIncIvaCalculado,
+          };
+        }
+      }
+
+      let updated = { ...curr, sourceVariantId: sourceId };
+      if (sourceVariant?.measureId && curr.measureId === sourceVariant.measureId) {
+        updated = { ...updated, measureId: "" };
+      }
+      next[variantIndex] = updated;
+      return next;
+    });
+
+    const currentVariant = variantForm.variants[variantIndex];
+    const factor = currentVariant?.conversionFactor ?? "";
+    const factorNum = parseFloat(factor.replace(",", ".")) || 0;
+    if (factorNum > 0 && sourceId) {
+      setTimeout(
+        () => handleConversionFactorChange(variantIndex, factor, sourceId),
+        0,
+      );
+    }
+  }
+
+  /**
+   * Al marcar una variante como predeterminada, desmarcar automáticamente
+   * cualquier otra variante que ya tenga isDefault = true.
+   */
+  function handleSetDefaultVariant(variantIndex: number, checked: boolean) {
+    variantForm.setVariants((prev) => {
+      const next = [...prev];
+      if (checked) {
+        return next.map((v, idx) => ({
+          ...v,
+          isDefault: idx === variantIndex,
+        }));
+      }
+      const curr = next[variantIndex];
+      if (!curr) return prev;
+      next[variantIndex] = { ...curr, isDefault: false };
+      return next;
+    });
+  }
+
+  function handleSaveSingleVariant(index: number) {
+    const variants = variantForm.variants;
+    const v = variants[index];
+    if (v?.isDefault) {
+      const otherDefault = variants.find(
+        (ov, oi) => oi !== index && ov.id && ov.isDefault,
+      );
+      if (otherDefault) {
+        toast({
+          title: "Variante predeterminada duplicada",
+          description: `La variante "${otherDefault.sku}" ya está marcada como predeterminada. Solo puede haber una variante predeterminada por artículo. Desmarca la otra variante primero.`,
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+    variantForm.saveSingleVariant(index);
+  }
+
   useEffect(() => {
     if (!open) return;
     generalForm.loadInitialGeneral(initialData);
@@ -390,6 +539,14 @@ export function ArticleFormDialog({
           measureId: v.measureId ?? v.measureUnit?.id ?? "",
           weight: String(v.weight ?? 0),
           observations: v.observations ?? "",
+          isFraction: Boolean((v as Record<string, unknown>).isFraction ?? false),
+          isDefault: Boolean((v as Record<string, unknown>).isDefault ?? false),
+          isVisible: (v as Record<string, unknown>).isVisible !== false,
+          conversionFactor: (v as Record<string, unknown>).conversionFactor != null
+            ? String((v as Record<string, unknown>).conversionFactor)
+            : "",
+          secondaryMeasureId: String((v as Record<string, unknown>).secondaryMeasureId ?? ""),
+          sourceVariantId: "",
           prices,
           fractionEnabled,
           fractions,
@@ -762,13 +919,11 @@ export function ArticleFormDialog({
               focusPctRentBelow={focusPctRentBelow}
               updateVariant={variantForm.updateVariant}
               updateVariantPriceField={variantForm.updateVariantPriceField}
-              updateVariantFractionPriceField={variantForm.updateVariantFractionPriceField}
               handleCostChange={variantForm.handleCostChange}
               handleCostIncIvaChange={variantForm.handleCostIncIvaChange}
-              toggleFractionEnabled={variantForm.toggleFractionEnabled}
-              updateFractionField={variantForm.updateFractionField}
-              addFraction={variantForm.addFraction}
-              removeFraction={variantForm.removeFraction}
+              handleConversionFactorChange={handleConversionFactorChange}
+              handleSourceVariantChange={handleSourceVariantChange}
+              handleSetDefaultVariant={handleSetDefaultVariant}
               additionalBarcodeInputByIndex={variantForm.additionalBarcodeInputByIndex}
               setAdditionalBarcodeInputByIndex={variantForm.setAdditionalBarcodeInputByIndex}
               editingBarcodeDescription={variantForm.editingBarcodeDescription}
@@ -777,7 +932,7 @@ export function ArticleFormDialog({
               removeAdditionalBarcode={variantForm.removeAdditionalBarcode}
               updateAdditionalBarcodeDescription={variantForm.updateAdditionalBarcodeDescription}
               isVariantDirty={variantForm.isVariantDirty}
-              saveSingleVariant={variantForm.saveSingleVariant}
+              saveSingleVariant={handleSaveSingleVariant}
               cancelEditVariant={variantForm.cancelEditVariant}
               startEditVariant={variantForm.startEditVariant}
               activeProfileName={activeProfileName}

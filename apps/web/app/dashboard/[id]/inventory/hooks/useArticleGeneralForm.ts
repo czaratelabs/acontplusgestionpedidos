@@ -13,7 +13,7 @@ import {
 import { formatDecimal } from "@/lib/cost-iva";
 import { roundToFive } from "@/lib/math.util";
 import { apiFetch, apiGet } from "@/lib/api-client";
-import { TARIFAS_KEYS, emptyPrices } from "@/lib/types/article.types";
+import { TARIFAS_KEYS } from "@/lib/types/article.types";
 
 const TARIFF_NAMES_KEY = "TARIFF_NAMES";
 const TARIFF_PROFITABILITY_KEY = "TARIFF_PROFITABILITY";
@@ -280,11 +280,6 @@ export function useArticleGeneralForm({
       const additionalBarcodes: AdditionalBarcode[] = Array.isArray(barcodesRaw)
         ? barcodesRaw.map((b) => ({ barcode: String(b.barcode ?? ""), description: String(b.description ?? "") }))
         : [];
-      const fractionEnabled = Boolean((vr as Record<string, unknown>).fractionEnabled);
-      const fractionsRaw = (vr as Record<string, unknown>).fractions as FractionConfig[] | undefined;
-      const fractions: FractionConfig[] = Array.isArray(fractionsRaw)
-        ? fractionsRaw.map((f) => ({ fraction_name: String(f?.fraction_name ?? ""), conversion_factor: String(f?.conversion_factor ?? "") }))
-        : [];
       return {
         id: vr.id as string,
         sku: String(vr.sku ?? ""),
@@ -298,9 +293,13 @@ export function useArticleGeneralForm({
         weight: String(vr.weight ?? 0),
         observations: String(vr.observations ?? ""),
         prices,
-        fractionEnabled,
-        fractions,
-        fractionPrices: emptyPrices(),
+        isDefault: Boolean(vr.isDefault ?? false),
+        isVisible: vr.isVisible !== false,
+        isFraction: Boolean((vr as Record<string, unknown>).isFraction ?? false),
+        conversionFactor:
+          (vr as Record<string, unknown>).conversionFactor != null
+            ? String((vr as Record<string, unknown>).conversionFactor)
+            : "",
       };
     });
   }

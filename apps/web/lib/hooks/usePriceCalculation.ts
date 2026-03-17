@@ -7,18 +7,9 @@ import type React from "react";
 import { formatDecimal, costIncIvaToCost } from "@/lib/cost-iva";
 import { roundToFive } from "@/lib/math.util";
 import type { VariantRow, PricesRow } from "@/lib/types/article.types";
-import { TARIFAS_KEYS, emptyPrices } from "@/lib/types/article.types";
+import { TARIFAS_KEYS } from "@/lib/types/article.types";
 
 export type TaxLike = { id: string; percentage: number };
-
-export function getFractionCost(v: VariantRow): number {
-  const cost = parseFloat(String(v.cost ?? "0")) || 0;
-  const first = (v.fractions ?? [])[0];
-  const factor = first
-    ? parseFloat(String(first.conversion_factor ?? "0").replace(",", ".")) || 0
-    : 0;
-  return roundToFive(cost * factor, 5);
-}
 
 export type PreserveSourceField = {
   field: "pctRent" | "precioVenta" | "pvp";
@@ -337,164 +328,13 @@ export function usePriceCalculation(deps: UsePriceCalculationDeps) {
     return true;
   }
 
-  // Fracción: misma lógica que base pero usando getFractionCost y fractionPrices
-  function handleFractionSalePriceCalculation(variantIndex: number, key: number) {
-    const v = variants[variantIndex];
-    if (!v?.fractionEnabled || (v.fractions ?? []).length === 0) return;
-    const cost = getFractionCost(v);
-    const ivaPct = getIvaPct();
-    const costIncIva =
-      ivaPct !== 0 ? roundToFive(cost * (1 + ivaPct / 100), 5) : cost;
-    const raw = (v.fractionPrices ?? emptyPrices())[
-      `precioVenta${key}` as keyof PricesRow
-    ];
-    const precioVentaNum = parseFloat(String(raw ?? "")) || 0;
-    const isEmpty = raw === "" || raw == null;
-    const isInvalid =
-      isEmpty || precioVentaNum <= 0 || precioVentaNum <= cost;
-    setVariants((prev) => {
-      const next = [...prev];
-      const curr = next[variantIndex];
-      if (!curr?.fractionPrices) return prev;
-      const prices = { ...(curr.fractionPrices as Record<string, string>) };
-      if (isInvalid) {
-        prices[`precioVenta${key}`] = "0";
-        prices[`pvp${key}`] = "0";
-        prices[`porcentajeRentabilidad${key}`] = "0";
-        prices[`rentabilidad${key}`] = "0";
-        prices[`rentabilidadIncIva${key}`] = "0";
-      } else {
-        const pv = roundToFive(precioVentaNum, 5);
-        const pvp = roundToFive(pv * (1 + ivaPct / 100), 5);
-        const pctRent =
-          cost > 0 ? roundToFive(((pv - cost) / cost) * 100, 5) : 0;
-        const valorRent = roundToFive(pv - cost, 5);
-        const valorRentIncIva = roundToFive(pvp - costIncIva, 5);
-        prices[`precioVenta${key}`] = formatDecimal(pv);
-        prices[`pvp${key}`] = formatDecimal(pvp);
-        prices[`porcentajeRentabilidad${key}`] = formatDecimal(pctRent);
-        prices[`rentabilidad${key}`] = formatDecimal(valorRent);
-        prices[`rentabilidadIncIva${key}`] = formatDecimal(valorRentIncIva);
-      }
-      next[variantIndex] = { ...curr, fractionPrices: prices as PricesRow };
-      return next;
-    });
-  }
-
-  function handleFractionPvpCalculation(variantIndex: number, rowIndex: number) {
-    const v = variants[variantIndex];
-    if (!v?.fractionEnabled || (v.fractions ?? []).length === 0) return;
-    const cost = getFractionCost(v);
-    const ivaPct = getIvaPct();
-    const costIncIva =
-      ivaPct !== 0 ? roundToFive(cost * (1 + ivaPct / 100), 5) : cost;
-    const raw = (v.fractionPrices ?? emptyPrices())[
-      `pvp${rowIndex}` as keyof PricesRow
-    ];
-    const pvpNum = parseFloat(String(raw ?? "")) || 0;
-    const isEmpty = raw === "" || raw == null;
-    const isInvalid = isEmpty || pvpNum <= 0 || pvpNum <= costIncIva;
-    setVariants((prev) => {
-      const next = [...prev];
-      const curr = next[variantIndex];
-      if (!curr?.fractionPrices) return prev;
-      const prices = { ...(curr.fractionPrices as Record<string, string>) };
-      if (isInvalid) {
-        prices[`precioVenta${rowIndex}`] = "0";
-        prices[`pvp${rowIndex}`] = "0";
-        prices[`porcentajeRentabilidad${rowIndex}`] = "0";
-        prices[`rentabilidad${rowIndex}`] = "0";
-        prices[`rentabilidadIncIva${rowIndex}`] = "0";
-      } else {
-        const pvp = roundToFive(pvpNum, 5);
-        const precioVenta =
-          ivaPct !== 0 ? roundToFive(pvp / (1 + ivaPct / 100), 5) : pvp;
-        const pctRent =
-          cost > 0
-            ? roundToFive(((precioVenta - cost) / cost) * 100, 5)
-            : 0;
-        const valorRent = roundToFive(precioVenta - cost, 5);
-        const valorRentIncIva = roundToFive(pvp - costIncIva, 5);
-        prices[`precioVenta${rowIndex}`] = formatDecimal(precioVenta);
-        prices[`pvp${rowIndex}`] = formatDecimal(pvp);
-        prices[`porcentajeRentabilidad${rowIndex}`] = formatDecimal(pctRent);
-        prices[`rentabilidad${rowIndex}`] = formatDecimal(valorRent);
-        prices[`rentabilidadIncIva${rowIndex}`] =
-          formatDecimal(valorRentIncIva);
-      }
-      next[variantIndex] = { ...curr, fractionPrices: prices as PricesRow };
-      return next;
-    });
-  }
-
-  function applyFractionPctRentBlurOrEnter(variantIndex: number, key: number) {
-    const v = variants[variantIndex];
-    if (!v?.fractionEnabled || (v.fractions ?? []).length === 0) return;
-    const raw = (v.fractionPrices ?? emptyPrices())[
-      `porcentajeRentabilidad${key}` as keyof PricesRow
-    ];
-    const numVal = parseFloat(String(raw ?? "")) || 0;
-    const finalVal = numVal < 0 || raw === "" || raw == null ? 0 : numVal;
-    if (finalVal === 0) {
-      setVariants((prev) => {
-        const next = [...prev];
-        const curr = next[variantIndex];
-        if (!curr?.fractionPrices) return prev;
-        const prices = { ...(curr.fractionPrices as Record<string, string>) };
-        prices[`porcentajeRentabilidad${key}`] = "0";
-        prices[`precioVenta${key}`] = "0";
-        prices[`pvp${key}`] = "0";
-        prices[`rentabilidad${key}`] = "0";
-        prices[`rentabilidadIncIva${key}`] = "0";
-        next[variantIndex] = {
-          ...curr,
-          fractionPrices: prices as PricesRow,
-        };
-        return next;
-      });
-    } else {
-      const cost = getFractionCost(v);
-      const ivaPct = getIvaPct();
-      const costIncIva =
-        ivaPct !== 0 ? roundToFive(cost * (1 + ivaPct / 100), 5) : cost;
-      const precioVenta =
-        cost > 0 ? roundToFive(cost * (1 + finalVal / 100), 5) : 0;
-      const pvp =
-        ivaPct !== 0
-          ? roundToFive(precioVenta * (1 + ivaPct / 100), 5)
-          : precioVenta;
-      const valorRent = roundToFive(precioVenta - cost, 5);
-      const valorRentIncIva = roundToFive(pvp - costIncIva, 5);
-      setVariants((prev) => {
-        const next = [...prev];
-        const curr = next[variantIndex];
-        if (!curr?.fractionPrices) return prev;
-        const prices = { ...(curr.fractionPrices as Record<string, string>) };
-        prices[`porcentajeRentabilidad${key}`] = formatDecimal(finalVal);
-        prices[`precioVenta${key}`] = formatDecimal(precioVenta);
-        prices[`pvp${key}`] = formatDecimal(pvp);
-        prices[`rentabilidad${key}`] = formatDecimal(valorRent);
-        prices[`rentabilidadIncIva${key}`] = formatDecimal(valorRentIncIva);
-        next[variantIndex] = {
-          ...curr,
-          fractionPrices: prices as PricesRow,
-        };
-        return next;
-      });
-    }
-  }
-
   return {
-    getFractionCost,
     handleSalePriceCalculation,
     handlePvpCalculation,
     handleCostToPriceCalculation,
     applyPctRentBlurOrEnter,
     applyPvpCellBlurOrEnter,
     refreshRentabilidadOnCostBlur,
-    handleFractionSalePriceCalculation,
-    handleFractionPvpCalculation,
-    applyFractionPctRentBlurOrEnter,
   };
 }
 

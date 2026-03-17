@@ -6,7 +6,6 @@ import {
   type VariantRow,
   type PricesRow,
   type Batch,
-  type FractionConfig,
   type AdditionalBarcode,
   TARIFAS_KEYS,
   emptyPrices,
@@ -201,10 +200,21 @@ export function useVariantForm({
       sizeId: vr.sizeId?.trim() || null,
       flavorId: vr.flavorId?.trim() || null,
       measureId: vr.measureId?.trim() || null,
+      conversionFactor:
+        vr.isFraction && vr.conversionFactor
+          ? parseFloat(String(vr.conversionFactor).replace(",", ".")) || null
+          : null,
+      isFraction: vr.isFraction ?? false,
+      secondaryMeasureId:
+        vr.isFraction && vr.measureId?.trim()
+          ? vr.measureId.trim()
+          : null,
       stockActual: 0,
       stockMin: 0,
       weight: parseFloat(vr.weight) || 0,
       observations: vr.observations?.trim() || null,
+      isDefault: vr.isDefault ?? false,
+      isVisible: vr.isVisible ?? true,
       prices: {
         precioVenta1: parseFloat(p.precioVenta1) || 0,
         precioVenta2: parseFloat(p.precioVenta2) || 0,
@@ -257,11 +267,6 @@ export function useVariantForm({
       const additionalBarcodes: AdditionalBarcode[] = Array.isArray(barcodesRaw)
         ? barcodesRaw.map((b) => ({ barcode: String(b.barcode ?? ""), description: String(b.description ?? "") }))
         : [];
-      const fractionEnabled = Boolean((vr as Record<string, unknown>).fractionEnabled);
-      const fractionsRaw = (vr as Record<string, unknown>).fractions as FractionConfig[] | undefined;
-      const fractions: FractionConfig[] = Array.isArray(fractionsRaw)
-        ? fractionsRaw.map((f) => ({ fraction_name: String(f?.fraction_name ?? ""), conversion_factor: String(f?.conversion_factor ?? "") }))
-        : [];
       return {
         id: vr.id as string,
         sku: String(vr.sku ?? ""),
@@ -275,9 +280,13 @@ export function useVariantForm({
         weight: String(vr.weight ?? 0),
         observations: String(vr.observations ?? ""),
         prices,
-        fractionEnabled,
-        fractions,
-        fractionPrices: emptyPrices(),
+        isDefault: Boolean((vr as Record<string, unknown>).isDefault ?? false),
+        isVisible: (vr as Record<string, unknown>).isVisible !== false,
+        isFraction: Boolean((vr as Record<string, unknown>).isFraction ?? false),
+        conversionFactor:
+          (vr as Record<string, unknown>).conversionFactor != null
+            ? String((vr as Record<string, unknown>).conversionFactor)
+            : "",
       };
     });
   }
@@ -483,18 +492,6 @@ export function useVariantForm({
     });
   }
 
-  function updateVariantFractionPriceField(variantIndex: number, field: keyof PricesRow, value: string) {
-    setVariants((prev) => {
-      const next = [...prev];
-      const v = next[variantIndex];
-      if (!v) return prev;
-      const fp = { ...(v.fractionPrices ?? emptyPrices()) } as Record<string, string>;
-      fp[field] = value;
-      next[variantIndex] = { ...v, fractionPrices: fp as PricesRow };
-      return next;
-    });
-  }
-
   async function checkBarcodeAvailable(barcode: string, excludeVariantId?: string | null): Promise<boolean> {
     const trimmed = barcode?.trim();
     if (!trimmed) return false;
@@ -558,59 +555,6 @@ export function useVariantForm({
     if (list[barcodeIndex]) list[barcodeIndex] = { ...list[barcodeIndex], description };
     updateVariant(variantIndex, "additionalBarcodes", list);
     setEditingBarcodeDescription(null);
-  }
-
-  function toggleFractionEnabled(variantIndex: number) {
-    const v = variants[variantIndex];
-    if (!v) return;
-    const nextEnabled = !v.fractionEnabled;
-    setVariants((prev) => {
-      const next = [...prev];
-      const curr = next[variantIndex];
-      if (!curr) return prev;
-      const fractions = curr.fractions ?? [];
-      const newFractions =
-        nextEnabled && fractions.length === 0 ? [{ fraction_name: "", conversion_factor: "" }] : fractions;
-      next[variantIndex] = {
-        ...curr,
-        fractionEnabled: nextEnabled,
-        fractions: newFractions,
-        fractionPrices: nextEnabled ? curr.fractionPrices ?? emptyPrices() : emptyPrices(),
-      };
-      return next;
-    });
-  }
-
-  function updateFractionField(variantIndex: number, fractionIndex: number, field: keyof FractionConfig, value: string) {
-    setVariants((prev) => {
-      const next = [...prev];
-      const curr = next[variantIndex];
-      if (!curr?.fractions?.length) return prev;
-      const list = [...curr.fractions];
-      if (list[fractionIndex]) list[fractionIndex] = { ...list[fractionIndex], [field]: value };
-      next[variantIndex] = { ...curr, fractions: list };
-      return next;
-    });
-  }
-
-  function addFraction(variantIndex: number) {
-    const v = variants[variantIndex];
-    if (!v) return;
-    updateVariant(variantIndex, "fractions", [...(v.fractions ?? []), { fraction_name: "", conversion_factor: "" }]);
-  }
-
-  function removeFraction(variantIndex: number, fractionIndex: number) {
-    const v = variants[variantIndex];
-    if (!v) return;
-    const list = (v.fractions ?? []).filter((_, j) => j !== fractionIndex);
-    updateVariant(variantIndex, "fractions", list);
-    if (list.length === 0) {
-      setVariants((prev) => {
-        const next = [...prev];
-        if (next[variantIndex]) next[variantIndex] = { ...next[variantIndex], fractionEnabled: false, fractionPrices: emptyPrices() };
-        return next;
-      });
-    }
   }
 
   async function addBatch(variantId: string, batchNumber: string, expirationDate: string, currentStock: string) {
@@ -729,11 +673,6 @@ export function useVariantForm({
     handleCostChange,
     handleCostIncIvaChange,
     updateVariantPriceField,
-    updateVariantFractionPriceField,
-    toggleFractionEnabled,
-    updateFractionField,
-    addFraction,
-    removeFraction,
     addAdditionalBarcode,
     removeAdditionalBarcode,
     updateAdditionalBarcodeDescription,

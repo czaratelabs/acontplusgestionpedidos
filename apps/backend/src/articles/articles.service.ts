@@ -157,7 +157,7 @@ export class ArticlesService {
   ): Promise<{ data: Article[]; total: number; page: number; limit: number }> {
     const [rows, total] = await this.articleRepo.findAndCount({
       where: { companyId },
-      relations: ['brand', 'category', 'tax', 'variants', 'variants.color', 'variants.size', 'variants.flavor', 'variants.prices', 'variants.measureUnit', 'variants.batches', 'variants.barcodes', 'images'],
+      relations: ['brand', 'category', 'tax', 'variants', 'variants.color', 'variants.size', 'variants.flavor', 'variants.prices', 'variants.measureUnit', 'variants.secondaryMeasure', 'variants.batches', 'variants.barcodes', 'images'],
       order: { name: 'ASC' },
       skip: (page - 1) * limit,
       take: limit,
@@ -169,7 +169,7 @@ export class ArticlesService {
   async findOne(id: string): Promise<Article> {
     const a = await this.articleRepo.findOne({
       where: { id },
-      relations: ['brand', 'category', 'tax', 'variants', 'variants.color', 'variants.size', 'variants.flavor', 'variants.prices', 'variants.measureUnit', 'variants.batches', 'variants.barcodes', 'images'],
+      relations: ['brand', 'category', 'tax', 'variants', 'variants.color', 'variants.size', 'variants.flavor', 'variants.prices', 'variants.measureUnit', 'variants.secondaryMeasure', 'variants.batches', 'variants.barcodes', 'images'],
     });
     if (!a) throw new NotFoundException('Artículo no encontrado');
     return this.enrichArticle(a);
@@ -186,6 +186,11 @@ export class ArticlesService {
         return {
           ...v,
           totalStock: (v.batches?.length ? batchSum : Number(v.stockActual || 0)) as number,
+          isFraction: v.isFraction ?? false,
+          isDefault: v.isDefault ?? false,
+          isVisible: v.isVisible ?? true,
+          conversionFactor: v.conversionFactor ?? null,
+          secondaryMeasureId: v.secondaryMeasureId ?? null,
         } as ArticleVariant & { totalStock: number };
       });
     }
@@ -457,6 +462,11 @@ export class ArticlesService {
       sizeId: dto.sizeId || null,
       flavorId: dto.flavorId || null,
       measureId: dto.measureId || null,
+      conversionFactor: dto.conversionFactor ?? null,
+      isFraction: dto.isFraction ?? false,
+      isDefault: dto.isDefault ?? false,
+      isVisible: dto.isVisible ?? true,
+      secondaryMeasureId: dto.secondaryMeasureId ?? null,
       stockActual: dto.stockActual ?? 0,
       stockMin: dto.stockMin ?? 0,
       weight: dto.weight ?? 0,
@@ -537,6 +547,11 @@ export class ArticlesService {
     if (dto.sizeId !== undefined) variant.sizeId = dto.sizeId || null;
     if (dto.flavorId !== undefined) variant.flavorId = dto.flavorId || null;
     if (dto.measureId !== undefined) variant.measureId = dto.measureId || null;
+    if (dto.conversionFactor !== undefined) variant.conversionFactor = dto.conversionFactor ?? null;
+    if (dto.isFraction !== undefined) variant.isFraction = dto.isFraction;
+    if (dto.isDefault !== undefined) variant.isDefault = dto.isDefault;
+    if (dto.isVisible !== undefined) variant.isVisible = dto.isVisible;
+    if (dto.secondaryMeasureId !== undefined) variant.secondaryMeasureId = dto.secondaryMeasureId ?? null;
     if (dto.stockActual != null) variant.stockActual = dto.stockActual;
     if (dto.stockMin != null) variant.stockMin = dto.stockMin;
     if (dto.weight != null) variant.weight = dto.weight;

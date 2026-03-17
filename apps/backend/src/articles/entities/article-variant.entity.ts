@@ -80,6 +80,30 @@ export class ArticleVariant {
   @JoinColumn({ name: 'measure_id' })
   measureUnit: Measure | null;
 
+  /** Factor de conversión respecto a la variante base. Solo aplica cuando is_fraction = true. */
+  @Column({ name: 'conversion_factor', type: 'decimal', precision: 18, scale: 5, nullable: true })
+  conversionFactor: number | null;
+
+  /** Indica si esta variante es una fracción calculada de otra variante del mismo artículo. */
+  @Column({ name: 'is_fraction', type: 'boolean', default: false })
+  isFraction: boolean;
+
+  /** Indica si esta variante se muestra como predeterminada en las transacciones de ventas. */
+  @Column({ name: 'is_default', type: 'boolean', default: false })
+  isDefault: boolean;
+
+  /** Indica si esta variante está visible para ser usada en transacciones de ventas. */
+  @Column({ name: 'is_visible', type: 'boolean', default: true })
+  isVisible: boolean;
+
+  /** Medida secundaria (unidad fraccionada). Aplica cuando is_fraction = true. */
+  @Column({ name: 'secondary_measure_id', type: 'uuid', nullable: true })
+  secondaryMeasureId: string | null;
+
+  @ManyToOne(() => Measure, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'secondary_measure_id' })
+  secondaryMeasure: Measure | null;
+
   @Column({ name: 'stock_actual', type: 'decimal', precision: 18, scale: 4, default: 0 })
   stockActual: number;
 

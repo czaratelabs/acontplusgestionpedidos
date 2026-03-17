@@ -79,12 +79,6 @@ export type Batch = {
 
 export type AdditionalBarcode = { barcode: string; description: string };
 
-/** Configuración de unidad fraccionaria (ej. venta por metro desde rollo). */
-export type FractionConfig = {
-  fraction_name: string;
-  conversion_factor: string;
-};
-
 export type VariantRow = {
   id?: string;
   sku: string;
@@ -99,9 +93,15 @@ export type VariantRow = {
   weight: string;
   observations: string;
   prices: PricesRow;
-  fractionEnabled?: boolean;
-  fractions: FractionConfig[];
-  fractionPrices: PricesRow;
+  /** Fraccionamiento desde otra variante */
+  isFraction?: boolean;
+  sourceVariantId?: string;
+  conversionFactor?: string;
+  /** Flags de visibilidad/ventas */
+  isDefault?: boolean;
+  isVisible?: boolean;
+  /** Medida secundaria (unidad fraccionada). */
+  secondaryMeasureId?: string;
 };
 
 export function emptyVariant(): VariantRow {
@@ -117,9 +117,12 @@ export function emptyVariant(): VariantRow {
     weight: "0",
     observations: "",
     prices: emptyPrices(),
-    fractionEnabled: false,
-    fractions: [],
-    fractionPrices: emptyPrices(),
+    isFraction: false,
+    sourceVariantId: "",
+    conversionFactor: "",
+    isDefault: false,
+    isVisible: true,
+    secondaryMeasureId: "",
   };
 }
 
